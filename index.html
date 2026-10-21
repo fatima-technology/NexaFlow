@@ -742,6 +742,7 @@ const MODULES=[
   {id:'reports',label:'Reports',icon:'📈',group:'Reports'},
   {id:'bookerReports',label:'My Reports',icon:'📊',group:'Reports'},
   {id:'storeReports',label:'Store Manager Reports',icon:'🏬',group:'Reports'},
+  {id:'attendanceLog',label:'Attendance & timings',icon:'🕒',group:'Staff'},
   {id:'users',label:'Users & access',icon:'⚙️',group:'System'},
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
   {id:'help',label:'User manual',icon:'📘',group:'System'},
@@ -782,7 +783,7 @@ function freshDB(){return{
   ],
   products:[],shops:[],invoices:[],purchases:[],supplierPayments:[],recoveries:[],collections:[],returns:[],claims:[],
   expenses:[],accounts:[{id:'acc_cash',name:'Cash in hand',type:'cash',opening:0,openingDate:today()}],transfers:[],
-  staffAdv:[],salarySetup:{},attendance:{},salaries:[],investors:[],investorTxns:[],activity:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0},
+  staffAdv:[],salarySetup:{},attendance:{},attendanceLogs:[],salaries:[],investors:[],investorTxns:[],activity:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0},
   licence:{limit:200,unlimited:false,devName:'Fatima-Tech',phone:'',whatsapp:'',email:'',message:'Your free limit of invoices is complete. Please purchase the full version to continue.'}
 }}
 
@@ -837,12 +838,28 @@ const isAdmin=()=>ME&&(ME.role==='admin'||ME.role==='developer');
 function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
+  if(mid==='attendanceLog'&&isAdmin())return true;
   if(isDev())return true;
   if(!S().modules[mid]&&mid!=='help')return false;
   if(ME.role==='booker'&&mid==='bookerReports')return true;
   const perms=ME.perms&&ME.perms.length?ME.perms:ROLE_DEFAULTS[ME.role]||[];
   return perms.includes(mid);
 }
+function attendancePunchIn(user){
+  const policy=S().attendancePolicy||{enabled:true,lateAfter:'09:15'};if(policy.enabled===false)return;
+  DB.attendanceLogs=Array.isArray(DB.attendanceLogs)?DB.attendanceLogs:[];
+  const date=today(),stamp=nowStamp(),time=stamp.slice(-5);let rec=DB.attendanceLogs.find(a=>a.userId===user.id&&a.date===date);
+  if(!rec){rec={id:uid(),userId:user.id,userName:user.name||user.username,username:user.username,role:user.role,date,inAt:stamp,inTime:time,outAt:'',outTime:''};DB.attendanceLogs.push(rec)}
+  else if(!rec.inAt){rec.inAt=stamp;rec.inTime=time;rec.userName=user.name||user.username;rec.role=user.role}
+}
+function attendancePunchOut(user){
+  if(!user)return;const policy=S().attendancePolicy||{enabled:true};if(policy.enabled===false)return;
+  DB.attendanceLogs=Array.isArray(DB.attendanceLogs)?DB.attendanceLogs:[];
+  const date=today(),stamp=nowStamp();let rec=DB.attendanceLogs.find(a=>a.userId===user.id&&a.date===date);
+  if(!rec){rec={id:uid(),userId:user.id,userName:user.name||user.username,username:user.username,role:user.role,date,inAt:'',inTime:'',outAt:'',outTime:''};DB.attendanceLogs.push(rec)}
+  rec.outAt=stamp;rec.outTime=stamp.slice(-5);
+}
+
 function doLogin(){
   const btn=$('#loginBtn');
   if(!DB||!Array.isArray(DB.users)){$('#loginErr').textContent='System is still loading. Please wait a moment and try again.';return}
@@ -855,7 +872,7 @@ function doLogin(){
     ME=user;try{sessionStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Session storage unavailable; continuing with in-memory login.',storageErr)}try{localStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Persistent session storage is full; continuing without persistent login.',storageErr)}
     $('#lp').value='';$('#loginErr').textContent='';
     if(btn){btn.disabled=true;btn.textContent='Signing in…'}
-    log('Login','Login',user.username);save(true);
+    attendancePunchIn(user);log('Login','Login',user.username);save(true);
     $('#loadingBrand').textContent='Loading '+(S().companyName||S().appName||'Distribution ERP');
     $('#loginLoading').classList.add('on');
     startApp();
@@ -937,7 +954,7 @@ function showWelcome(after){
   w.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>close(b.dataset.w));
   w.classList.add('on');setTimeout(()=>countUp(w.querySelectorAll('.w-facts>div'),false),350);setTimeout(()=>document.addEventListener('keydown',key),300);setTimeout(()=>{const b=w.querySelector('.go');b&&b.focus()},50);
 }
-function logout(){$('#welcome').classList.remove('on');log('Login','Logout',ME?ME.username:'');save(true);ME=null;localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);PENDING.finally(()=>location.reload())}
+function logout(){$('#welcome').classList.remove('on');attendancePunchOut(ME);log('Login','Logout',ME?ME.username:'');save(true);ME=null;localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);PENDING.finally(()=>location.reload())}
 function changePasswordDialog(forced){
   modal(forced?'First login: set a new password':'Change password',`
    <div class="grid g2"><div class="f"><label>New password</label><input id="np1" type="password"></div>
@@ -2182,42 +2199,56 @@ VIEWS.bookerReports=el=>{
   const bookerId=ME.role==='booker'?ME.id:(DB.users.find(u=>u.role==='booker')||{}).id;
   const shopsFor=()=>DB.shops.filter(s=>s.bookerId===bookerId);
   const startOfMonth=()=>today().slice(0,8)+'01';
-  el.innerHTML=`<div class="card"><h3>My Booker Reports</h3><p class="muted">Your own sales, recovery, assigned shops and market credit. Data is limited to your account.</p>
+  el.innerHTML=`<div class="card"><h3>My Booker Reports</h3><p class="muted">Har report alag kholain: Sales Invoices, Market Credit ya Recovery.</p>
    <div class="grid">${F('From date',inp('brFrom',startOfMonth(),'date'))}${F('To date',inp('brTo',today(),'date'))}</div>
-   <div class="row mt"><button class="btn pri" id="brRun">Generate report</button><button class="btn" id="brPrint">🖨️ Print</button><button class="btn" id="brXls">📊 Excel</button></div></div><div id="brOut"></div>`;
-  let report=null;
+   <div class="row mt" id="brTabs"><button class="btn pri" data-brtab="sales">📄 Sales Invoices</button><button class="btn" data-brtab="credit">💳 Market Credit</button><button class="btn" data-brtab="recovery">💰 Recovery</button><button class="btn" data-brtab="shops">🏪 My Shops</button></div>
+   <div class="row mt"><button class="btn" id="brRun">↻ Refresh report</button><button class="btn" id="brPrint">🖨️ Print current report</button><button class="btn" id="brXls">📊 Export current report</button></div></div><div id="brOut"></div>`;
+  let report=null,activeTab='sales';
   const build=()=>{
     const from=V('brFrom')||startOfMonth(),to=V('brTo')||today();
     if(from>to){toast('From date cannot be after To date.',true);return null}
     const shops=shopsFor(),shopIds=new Set(shops.map(s=>s.id));
     const invoices=activeInv().filter(i=>i.bookerId===bookerId&&inRange(i.date,from,to));
-    const recoveries=approvedRec().filter(r=>r.collectorId===bookerId&&inRange(r.approvedDate||r.date,from,to));
-    const recoveryTotal=sum(recoveries,r=>r.amount);
-    const sales=sum(invoices,i=>i.net),creditSales=sum(invoices,invDue);
+    const recoveries=approvedRec().filter(r=>r.collectorId===bookerId&&shopIds.has(r.shopId)&&inRange(r.approvedDate||r.date,from,to));
+    const sales=sum(invoices,i=>i.net),creditSales=sum(invoices,invDue),recoveryTotal=sum(recoveries,r=>r.amount);
     const outstanding=sum(shops,s=>Math.max(0,shopDue(s.id)));
     const visited=new Set(invoices.map(i=>i.shopId).filter(Boolean)).size;
     const cards=[['Sales in period',money(sales)],['Invoices',invoices.length],['Shops sold to',visited],['Approved recovery',money(recoveryTotal)],['Credit given',money(creditSales)],['Current market credit',money(outstanding)]];
-    const shopRows=shops.map(sh=>{
-      const iv=invoices.filter(i=>i.shopId===sh.id);
-      const rec=recoveries.filter(r=>r.shopId===sh.id);
-      return [sh.id,sh.name,sh.route||'',iv.length,sum(iv,i=>i.net),sum(rec,r=>r.amount),Math.max(0,shopDue(sh.id))];
-    }).sort((a,b)=>b[6]-a[6]);
+    const shopRows=shops.map(sh=>{const iv=invoices.filter(i=>i.shopId===sh.id);const rec=recoveries.filter(r=>r.shopId===sh.id);return [sh.id,sh.name,sh.route||'',iv.length,sum(iv,i=>i.net),sum(rec,r=>r.amount),Math.max(0,shopDue(sh.id))]}).sort((a,b)=>b[6]-a[6]);
     const recRows=recoveries.slice().sort((a,b)=>String(b.approvedDate||b.date).localeCompare(String(a.approvedDate||a.date))).map(r=>[fmtDate(r.approvedDate||r.date),r.shopName||'',r.method||'',r.status||'approved',N(r.amount),r.note||'']);
     const invRows=invoices.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(i=>[fmtDate(i.date),i.no||'',i.shopName||'',i.payType||'',N(i.net),N(invDue(i))]);
-    return {from,to,cards,shopRows,recRows,invRows,cols:[{t:'Shop'},{t:'Route'},{t:'Invoices',n:1},{t:'Sales',n:1},{t:'Recovery',n:1},{t:'Current due',n:1}],rows:shopRows.map(r=>r.slice(1)),foot:['Total','',sum(shopRows,r=>r[3]),sum(shopRows,r=>r[4]),sum(shopRows,r=>r[5]),sum(shopRows,r=>r[6])]};
+    return {from,to,cards,shopRows,recRows,invRows,cols:[{t:'Shop'},{t:'Route'},{t:'Invoices',n:1},{t:'Sales',n:1},{t:'Recovery',n:1},{t:'Current due',n:1}],rows:shopRows.map(r=>r.slice(1)),foot:['Total','',sum(shopRows,r=>r[3]),sum(shopRows,r=>r[4]),sum(shopRows,r=>r[5]),sum(shopRows,r=>r[6])],creditRows:shopRows.map(r=>[r[1],r[2],r[6]]),creditFoot:['Total','',sum(shopRows,r=>r[6])],shopIds:shopRows.map(r=>r[0])};
   };
   const draw=()=>{
     report=build();if(!report)return;
-    $('#brOut').innerHTML=`<div class="kpis">${report.cards.map(c=>`<div class="kpi"><small>${esc(c[0])}</small><b>${esc(String(c[1]))}</b></div>`).join('')}</div>
-      <div class="card"><h3>My shop ledger summary <span class="sp"></span><span class="small muted">Click a shop to open its ledger</span></h3><div id="brShops"></div></div>
-      <div class="card"><h3>My sales invoices</h3>${table([{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales',n:1},{t:'Due',n:1}],report.invRows)}</div>
-      <div class="card"><h3>My approved recovery</h3>${table([{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount',n:1},{t:'Note'}],report.recRows)}</div>`;
-    const target=$('#brShops');target.innerHTML=table(report.cols,report.rows.map(r=>r.map(v=>typeof v==='number'?fmt(v):esc(v))),report.foot.map(v=>typeof v==='number'?fmt(v):esc(v)));
-    target.querySelectorAll('tbody tr').forEach((tr,i)=>{const shop=report.shopRows[i];if(!shop)return;tr.classList.add('clk');tr.title='Open shop ledger';tr.onclick=()=>showLedger(shop[0]);});
+    $$('[data-brtab]').forEach(b=>{b.classList.toggle('pri',b.dataset.brtab===activeTab);b.classList.toggle('on',b.dataset.brtab===activeTab)});
+    const cardsHtml=`<div class="kpis">${report.cards.map(c=>`<div class="kpi"><small>${esc(c[0])}</small><b>${esc(String(c[1]))}</b></div>`).join('')}</div>`;
+    let body='';
+    if(activeTab==='sales') body=`<div class="card"><h3>My Sales Invoices</h3>${table([{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales',n:1},{t:'Due',n:1}],report.invRows)}</div>`;
+    if(activeTab==='credit') body=`<div class="card"><h3>Market Credit — Shop Wise</h3><p class="muted">Sirf aapki assigned shops ka current outstanding balance.</p>${table([{t:'Shop'},{t:'Route'},{t:'Outstanding',n:1}],report.creditRows,report.creditFoot)}</div>`;
+    if(activeTab==='recovery') body=`<div class="card"><h3>My Approved Recovery</h3>${table([{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount',n:1},{t:'Note'}],report.recRows)}</div>`;
+    if(activeTab==='shops') body=`<div class="card"><h3>My Shop Summary</h3>${table(report.cols,report.rows.map(r=>r.map(v=>typeof v==='number'?fmt(v):esc(v))),report.foot)}</div>`;
+    $('#brOut').innerHTML=cardsHtml+body;
+    if(activeTab==='shops') $('#brOut').querySelectorAll('tbody tr').forEach((tr,i)=>{const shop=report.shopRows[i];if(!shop)return;tr.classList.add('clk');tr.title='Open shop ledger';tr.onclick=()=>showLedger(shop[0]);});
+    if(activeTab==='credit') $('#brOut').querySelectorAll('tbody tr').forEach((tr,i)=>{const shop=report.shopRows[i];if(!shop)return;tr.classList.add('clk');tr.title='Open shop ledger';tr.onclick=()=>showLedger(shop[0]);});
   };
   $('#brRun').onclick=draw;
-  $('#brPrint').onclick=()=>{if(!report)draw();if(!report)return;const r=report;printDoc('report',`<h2>Booker Performance Report</h2><p>Period: ${fmtDate(r.from)} — ${fmtDate(r.to)}</p><table class="kv">${r.cards.map(c=>`<tr><td>${esc(c[0])}</td><td>${esc(String(c[1]))}</td></tr>`).join('')}</table><h3>Shop ledger summary</h3>${tableHTMLPrint(r.cols,r.rows,r.foot)}<h3>Sales invoices</h3>${tableHTMLPrint([{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales',n:1},{t:'Due',n:1}],r.invRows)}<h3>Approved recovery</h3>${tableHTMLPrint([{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount',n:1},{t:'Note'}],r.recRows)}`,{title:'Booker Performance Report',sub:fmtDate(r.from)+' to '+fmtDate(r.to)});};
-  $('#brXls').onclick=()=>{if(!report)draw();if(report)exportExcel('My Booker Report',report.cols,report.rows,report.foot)};
+  $$('[data-brtab]').forEach(b=>b.onclick=()=>{activeTab=b.dataset.brtab;draw()});
+  $('#brFrom').addEventListener('change',draw);$('#brTo').addEventListener('change',draw);
+  $('#brPrint').onclick=()=>{if(!report)draw();if(!report)return;const r=report;let title='',cols=[],rows=[],foot=[];
+    if(activeTab==='sales'){title='Booker Sales Invoices';cols=[{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales',n:1},{t:'Due',n:1}];rows=r.invRows}
+    else if(activeTab==='credit'){title='Booker Market Credit';cols=[{t:'Shop'},{t:'Route'},{t:'Outstanding',n:1}];rows=r.creditRows;foot=r.creditFoot}
+    else if(activeTab==='recovery'){title='Booker Approved Recovery';cols=[{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount',n:1},{t:'Note'}];rows=r.recRows}
+    else {title='Booker Shop Summary';cols=r.cols;rows=r.rows;foot=r.foot}
+    printDoc('report',`<h2>${title}</h2><p>Period: ${fmtDate(r.from)} — ${fmtDate(r.to)}</p>${tableHTMLPrint(cols,rows,foot)}`,{title,sub:fmtDate(r.from)+' to '+fmtDate(r.to)});
+  };
+  $('#brXls').onclick=()=>{if(!report)draw();if(!report)return;const r=report;let title='',cols=[],rows=[],foot=[];
+    if(activeTab==='sales'){title='Booker Sales Invoices';cols=[{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales'},{t:'Due'}];rows=r.invRows}
+    else if(activeTab==='credit'){title='Booker Market Credit';cols=[{t:'Shop'},{t:'Route'},{t:'Outstanding'}];rows=r.creditRows;foot=r.creditFoot}
+    else if(activeTab==='recovery'){title='Booker Recovery';cols=[{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount'},{t:'Note'}];rows=r.recRows}
+    else {title='Booker Shop Summary';cols=r.cols;rows=r.rows;foot=r.foot}
+    exportExcel(title,cols,rows,foot);
+  };
   draw();
 };
 
@@ -2242,6 +2273,20 @@ function userEditor(u,dev){
   $('#euR').onchange=()=>{const d=ROLE_DEFAULTS[V('euR')]||[];$$('#euPerms input').forEach(c=>c.checked=d.includes(c.value))};
   $('#euDef').onclick=()=>$('#euR').onchange();
 }
+VIEWS.attendanceLog=el=>{
+  if(!isAdmin()) { el.innerHTML='<div class="card"><h3>Attendance</h3><p class="note">Only Admin can manage attendance settings and view all users.</p></div>'; return; }
+  const pol=S().attendancePolicy||(S().attendancePolicy={start:'09:00',end:'18:00',lateAfter:'09:15',enabled:true});
+  const day=today();
+  el.innerHTML=`<div class="card"><h3>Attendance timing settings</h3><p class="small muted">Admin yahan office start, chhutti aur late threshold set kar sakta hai. Timing save karne ke baad login/logout records neeche nazar aayenge.</p>
+  <div class="grid g2">${F('Attendance / office start time',inp('apStart',pol.start||'09:00','time'))}${F('Chhutti / office end time',inp('apEnd',pol.end||'18:00','time'))}${F('Late mark after',inp('apLate',pol.lateAfter||'09:15','time'))}${F('Attendance tracking',sel('apEnabled',[{v:'1',t:'Enabled'},{v:'0',t:'Disabled'}],pol.enabled===false?'0':'1'))}</div>
+  <div class="row mt"><button class="btn pri" id="apSave">💾 Save attendance timings</button></div></div>
+  <div class="card"><h3>User attendance log</h3><div class="grid g2">${F('Date',inp('apDate',day,'date'))}${F('User',sel('apUser',[{v:'',t:'All users'},...DB.users.filter(u=>u.role!=='developer'&&u.role!=='staff').map(u=>({v:u.id,t:(u.name||u.username)+' ('+u.username+')'}))],''))}</div><div id="apOut" class="mt"></div></div>`;
+  $('#apSave').onclick=()=>{S().attendancePolicy={start:V('apStart')||'09:00',end:V('apEnd')||'18:00',lateAfter:V('apLate')||'09:15',enabled:V('apEnabled')==='1'};log('Attendance','Timing policy saved','',`${S().attendancePolicy.start}–${S().attendancePolicy.end}; late after ${S().attendancePolicy.lateAfter}`);save();toast('Attendance timings saved.');render()};
+  const draw=()=>{const d=V('apDate'),u=V('apUser');const rows=(DB.attendanceLogs||[]).filter(a=>a.date===d&&(!u||a.userId===u)).sort((a,b)=>(a.userName||'').localeCompare(b.userName||''));
+    $('#apOut').innerHTML=table([{t:'User'},{t:'Role'},{t:'Date'},{t:'In time'},{t:'Out time'},{t:'Status'},{t:'Working hours',n:1}],rows.map(a=>{const policy=S().attendancePolicy||{lateAfter:'09:15'};const late=a.inTime&&a.inTime>(policy.lateAfter||'09:15');let hrs='—';if(a.inAt&&a.outAt){const mins=Math.max(0,Math.round((new Date(a.outAt.replace(' ','T'))-new Date(a.inAt.replace(' ','T')))/60000));hrs=Math.floor(mins/60)+'h '+(mins%60)+'m'}return[esc(a.userName||''),esc(ROLES[a.role]||a.role||''),esc(a.date),esc(a.inTime||'—'),esc(a.outTime||'—'),badge(a.outTime?'Completed':(late?'Late':'Present'),a.outTime?'ok':(late?'bad':'ok')),hrs]}))||'<p class="muted">No attendance records for this date.</p>';};
+  $('#apDate').onchange=draw;$('#apUser').onchange=draw;draw();
+};
+
 VIEWS.users=el=>{
   const list=DB.users.filter(u=>u.role!=='developer');
   el.innerHTML=`<div class="card"><h3>Users & access<span class="sp"></span><button class="btn sm pri" id="usNew">+ New user</button></h3>
