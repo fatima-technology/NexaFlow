@@ -797,7 +797,7 @@ const hashPass=(user,pass)=>sha256('ft-erp|'+String(user).toLowerCase().trim()+'
 
 /* ---------- default settings (developer changes all of these from panel) ---------- */
 const PRINT_TYPES={
-  invoice:{label:'Sales invoice',title:'SALES INVOICE',paper:'A4dual_v'},
+  invoice:{label:'Sales invoice',title:'SALES INVOICE',paper:'A4dual'},
   purchase:{label:'Purchase invoice',title:'PURCHASE INVOICE',paper:'A4'},
   picklist:{label:'Picklist / load sheet',title:'PICKLIST & LOAD SHEET',paper:'A4'},
   ledger:{label:'Shop ledger',title:'SHOP LEDGER',paper:'A4'},
@@ -1227,7 +1227,7 @@ function printFooter(P){
 function printDoc(type,body,o){
   o=o||{};const s=S();const P=Object.assign({},defaultPrint()[type]||defaultPrint().report,s.print[type]||{});
   const title=o.title!==undefined?(type==='report'&&P.title&&o.title?P.title+' — '+o.title:o.title):(P.title||'');
-  const paper=P.paper||'A4';const dual=paper==='A4dual'||paper==='A4dual_v';const land=P.orientation==='landscape';
+  const paper=(P.paper==='A4dual_v'?'A4dual':P.paper)||'A4';const dual=paper==='A4dual';const land=P.orientation==='landscape';
   const lhBg=P.letterhead==='background'&&s.letterhead;const fs=N(P.fontSize)||12;
   const mm=(v,d)=>{const x=parseFloat(v);return isFinite(x)&&x>=0?x:d};
   const mT=mm(P.mTop,10),mR=mm(P.mRight,10),mB=mm(P.mBottom,10),mL=mm(P.mLeft,10);
@@ -1236,21 +1236,16 @@ function printDoc(type,body,o){
   let W=210,H=297,pageCss;
   if(paper==='thermal'){W=80;H=0;pageCss='80mm auto'}
   else if(paper==='A4dual'){W=297;H=210;pageCss='A4 landscape'}
-  else if(paper==='A4dual_v'){pageCss='A4 portrait'}
   else{const bs=paper==='A5'?[148,210]:[210,297];[W,H]=land?[bs[1],bs[0]]:bs;pageCss=paper+' '+(land?'landscape':'portrait')}
-  const hw=paper==='A4dual'?W/2:W,hh=paper==='A4dual_v'?H/2:H;
   const css=`@page{size:${pageCss};margin:0}
   *{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:${fs}px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .pg{width:${paper==='thermal'?'76mm':'100%'};border-collapse:collapse;break-after:page;page-break-after:always}.pg:last-of-type{break-after:auto;page-break-after:auto}
   .pg>thead>tr>td,.pg>tfoot>tr>td,.pg>tbody>tr>td{border:0!important;padding:0!important;background:none!important}
   .pg>tbody>tr>td.pgc{padding:0 ${paper==='thermal'?2:mR}mm 0 ${paper==='thermal'?2:mL}mm!important}
   .lhfix{position:fixed;left:0;top:0;width:${W}mm;height:${H}mm;object-fit:fill;z-index:-1}
-  .sheet2{width:${W}mm;height:${H}mm;display:flex;overflow:hidden;break-after:page;page-break-after:always}.sheet2:last-of-type{break-after:auto;page-break-after:auto}
-  .sheet2.row{flex-direction:row}.sheet2.col{flex-direction:column}
-  .half{position:relative;width:${hw}mm;height:${hh}mm;flex:0 0 auto;overflow:hidden;padding:${top}mm ${mR}mm ${bot}mm ${mL}mm}
-  .sheet2.row .half+.half{border-left:1px dashed #999}.sheet2.col .half+.half{border-top:1px dashed #999}
-  .half .lhbg{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:-1}
-  .fit{transform-origin:top left}
+  .two{width:100%;border-collapse:collapse;table-layout:fixed}.two>tbody>tr>td{width:50%;vertical-align:top;padding:0 3mm;border:0}
+  .two>tbody>tr>td:first-child{padding-left:0}.two>tbody>tr>td:last-child{padding-right:0;border-left:1px dashed #999}
+  .lhfix2{position:fixed;top:0;width:${W/2}mm;height:${H}mm;object-fit:fill;z-index:-1}
   .cl{float:right;border:1.5px solid #222;padding:1px 8px;font-size:${fs-1}px;font-weight:700;border-radius:3px;margin:0 0 3px 6px}
   .doc .lh-top{width:100%;max-height:40mm;object-fit:contain;display:block;margin-bottom:4px}
   .doc .ph{display:flex;align-items:center;gap:10px;border-bottom:2px solid #222;padding-bottom:5px}.doc .ph .pc{flex:1;text-align:center}.doc .lg{height:${paper==='thermal'?'28px':dual?'40px':'52px'};max-width:28%;object-fit:contain}
@@ -1267,16 +1262,13 @@ function printDoc(type,body,o){
   ${paper==='thermal'?'.doc .meta{grid-template-columns:1fr}.doc .tot{width:100%}.doc .sig{display:none}':''}`;
   const one=(b,label)=>`<div class="doc">${label?`<div class="cl">${esc(label)}</div>`:''}${printHeader(P,title,o.sub)}${b}${printFooter(P)}</div>`;
   const bodies=Array.isArray(body)?body:[body];let html='';
-  if(dual){bodies.forEach(b=>{const l=[labels[0]||'',labels[1]||labels[0]||''];html+=`<div class="sheet2 ${paper==='A4dual'?'row':'col'}">${l.map(x=>`<div class="half">${lhBg?`<img class="lhbg" src="${s.letterhead}">`:''}<div class="fit">${one(b,x)}</div></div>`).join('')}</div>`})}
+  if(dual){if(lhBg)html+=`<img class="lhfix2" style="left:0" src="${s.letterhead}"><img class="lhfix2" style="left:${W/2}mm" src="${s.letterhead}">`;
+    bodies.forEach(b=>{const l=[labels[0]||'',labels[1]||labels[0]||''];html+=`<table class="pg"><thead><tr><td style="height:${top}mm"></td></tr></thead><tbody><tr><td class="pgc"><table class="two"><tbody><tr>${l.map(x=>`<td>${one(b,x)}</td>`).join('')}</tr></tbody></table></td></tr></tbody><tfoot><tr><td style="height:${bot}mm"></td></tr></tfoot></table>`})}
   else{const n=Math.max(1,N(P.copies)||1);if(lhBg&&paper!=='thermal')html+=`<img class="lhfix" src="${s.letterhead}">`;
     bodies.forEach(b=>{for(let c=0;c<n;c++)html+=`<table class="pg"><thead><tr><td style="height:${paper==='thermal'?2:top}mm"></td></tr></thead><tbody><tr><td class="pgc">${one(b,n>1?labels[c]||'':'')}</td></tr></tbody><tfoot><tr><td style="height:${paper==='thermal'?2:bot}mm"></td></tr></tfoot></table>`})}
   const fr=document.createElement('iframe');fr.style.cssText='position:fixed;left:-20000px;top:0;width:1200px;height:900px;border:0;visibility:hidden';document.body.appendChild(fr);
   const d=fr.contentWindow.document;d.open();d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title||s.companyName)}</title><style>${css}</style></head><body>${html}</body></html>`);d.close();
-  const fitHalves=()=>{let cut=false;d.querySelectorAll('.half').forEach(h=>{const f=h.querySelector('.fit');const cs=fr.contentWindow.getComputedStyle(h);
-    const aw=h.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight),ah=h.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
-    f.style.transform='';f.style.width=aw+'px';let k=1;for(let i=0;i<5;i++){const ht=f.scrollHeight;if(ht<=ah+1)break;k=Math.max(.5,k*ah/ht);f.style.width=(aw/k)+'px';f.style.transform=`scale(${k})`;if(k<=.5)break}
-    if(f.scrollHeight*k>ah+2)cut=true});return cut};
-  const go=()=>{if(dual&&fitHalves())toast('Invoice is too long to fit on a half page. Set the invoice paper to "A4" in the Developer panel.',true);
+  const go=()=>{
     setTimeout(()=>{try{fr.contentWindow.focus();fr.contentWindow.print()}catch(e){console.error(e)}setTimeout(()=>fr.remove(),60000)},60)};
   const imgs=Array.from(d.images);let left=imgs.length;if(!left)setTimeout(go,150);else imgs.forEach(im=>{const done=()=>{if(--left===0)setTimeout(go,100)};im.complete?done():(im.onload=im.onerror=done)});
   return fr;
@@ -2440,7 +2432,7 @@ const DEV_TABS={
  print:['Print formats',el=>{const P=S().print;el.innerHTML=`<div class="card"><h3>Format of each print</h3><div class="grid">${F('Which print',sel('dpT',Object.entries(PRINT_TYPES).map(([v,x])=>({v,t:x.label})),'invoice'))}</div><div id="dpF" class="mt"></div></div>
    <div class="note">"2 copies on A4" prints two copies on one A4 page (for example Customer copy and Office copy) with a cut line in between. A long invoice shrinks automatically to fit. Margins are in mm from the paper edge. In letterhead "background" mode, the blank space at top / bottom is set from the letterhead fields.</div>`;
   const draw=()=>{const k=V('dpT'),p=P[k];$('#dpF').innerHTML=`<div class="grid">${F('Print title',inp('dpTi',p.title,'text','placeholder="Blank = no title"'),'wide')}
-    ${F('Paper',sel('dpPa',[{v:'A4',t:'A4 (full page)'},{v:'A4dual_v',t:'2 copies on A4 — top / bottom'},{v:'A4dual',t:'2 copies on A4 — side by side'},{v:'A5',t:'A5'},{v:'thermal',t:'Thermal 80mm'}],p.paper))}${F('Orientation',sel('dpOr',[{v:'portrait',t:'Portrait'},{v:'landscape',t:'Landscape'}],p.orientation))}
+    ${F('Paper',sel('dpPa',[{v:'A4',t:'A4 (full page)'},{v:'A4dual',t:'2 copies on A4 landscape — side by side (long invoices continue on next page)'},{v:'A5',t:'A5'},{v:'thermal',t:'Thermal 80mm'}],p.paper==='A4dual_v'?'A4dual':p.paper))}${F('Orientation',sel('dpOr',[{v:'portrait',t:'Portrait'},{v:'landscape',t:'Landscape'}],p.orientation))}
     ${F('Letterhead',sel('dpLh',[{v:'none',t:'None'},{v:'header',t:'As top header'},{v:'background',t:'Full page background'}],p.letterhead))}${F('Copies (not used on 2-copy paper)',inp('dpCp',p.copies,'number','min="1" max="4"'))}
     ${F('Show logo',sel('dpLg',[{v:'1',t:'Yes'},{v:'0',t:'No'}],p.showLogo?'1':'0'))}${F('Principal logo',sel('dpPl',[{v:'1',t:'Yes'},{v:'0',t:'No'}],p.showPrincipal?'1':'0'))}${F('Company name / address',sel('dpCo',[{v:'1',t:'Yes'},{v:'0',t:'No'}],p.showCompany?'1':'0'))}${F('Font size',inp('dpFs',p.fontSize,'number'))}
     ${F('Margin top (mm)',inp('dpMT',p.mTop??10,'number'))}${F('Margin right (mm)',inp('dpMR',p.mRight??10,'number'))}${F('Margin bottom (mm)',inp('dpMB',p.mBottom??10,'number'))}${F('Margin left (mm)',inp('dpML',p.mLeft??10,'number'))}
