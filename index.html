@@ -716,15 +716,18 @@ const MODULES=[
   {id:'staff',label:'Staff advance',icon:'🧾',group:'Staff'},
   {id:'salary',label:'Salary & attendance',icon:'💼',group:'Staff'},
   {id:'reports',label:'Reports',icon:'📈',group:'Reports'},
+  {id:'bookerReports',label:'My Reports',icon:'📊',group:'Reports'},
+  {id:'storeReports',label:'Store Manager Reports',icon:'🏬',group:'Reports'},
   {id:'users',label:'Users & access',icon:'⚙️',group:'System'},
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
   {id:'help',label:'User manual',icon:'📘',group:'System'},
   {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true}
 ];
-const ROLES={admin:'Admin',booker:'Order booker',kpo:'KPO / data entry',supplyman:'Supply man',staff:'Staff (no login)'};
+const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man',staff:'Staff (no login)'};
 const ROLE_DEFAULTS={
   admin:MODULES.filter(m=>!m.devOnly).map(m=>m.id),
-  booker:['dashboard','pos','invoices','recovery','shops','help'],
+  booker:['dashboard','pos','invoices','recovery','shops','bookerReports','help'],
+  storemanager:['dashboard','products','purchases','suppliers','returns','claims','storeReports','help'],
   kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','recovery','shops','expenses','help'],
   supplyman:['dashboard','collection','help'],
   staff:[]
@@ -812,6 +815,7 @@ function canSee(mid){
   if(m.devOnly)return isDev();
   if(isDev())return true;
   if(!S().modules[mid]&&mid!=='help')return false;
+  if(ME.role==='booker'&&mid==='bookerReports')return true;
   const perms=ME.perms&&ME.perms.length?ME.perms:ROLE_DEFAULTS[ME.role]||[];
   return perms.includes(mid);
 }
@@ -2115,6 +2119,84 @@ VIEWS.reports=el=>{
   const show=k=>{$$('[data-rp]').forEach(b=>b.classList.toggle('on',b.dataset.rp===k));const r=REPORTS[k];reportBlock($('#rpO'),{title:r.t,printType:'report_'+k,filters:r.f?r.f():'',build:r.b,after:r.a})};
   $$('[data-rp]').forEach(b=>b.onclick=()=>show(b.dataset.rp));show('daily');
 };
+/* =====================================================================
+   STORE MANAGER STOCK MOVEMENT REPORTS
+   ===================================================================== */
+VIEWS.storeReports=el=>{
+  if(ME.role!=='storemanager'&&!isAdmin()&&ME.role!=='developer'){el.innerHTML='<div class="card">This report is available to Store Managers only.</div>';return}
+  const monthStart=()=>today().slice(0,8)+'01';
+  el.innerHTML=`<div class="card"><h3>Store Manager — Stock Control Reports</h3><p class="muted">Track stock received, sold/issued, returned, claimed and closing balance by date and product.</p>
+    <div class="grid">${F('From date',inp('smFrom',monthStart(),'date'))}${F('To date',inp('smTo',today(),'date'))}${F('Product',sel('smProd',DB.products.map(p=>({v:p.id,t:p.name})).sort((a,b)=>a.t.localeCompare(b.t)),'','All products'))}${F('Movement type',sel('smType',[{v:'',t:'All movements'},{v:'Purchase',t:'Purchase / stock received'},{v:'Sale',t:'Sales / stock out'},{v:'Return',t:'Returns to stock'},{v:'Claim',t:'Claims / damaged stock'}],''))}</div>
+    <div class="row mt"><button class="btn pri" id="smRun">Generate report</button><button class="btn" id="smPrint">🖨️ Print</button><button class="btn" id="smXls">📊 Excel</button></div></div><div id="smOut"></div>`;
+  let result=null;
+  const build=()=>{
+    const from=V('smFrom')||monthStart(),to=V('smTo')||today(),pid=V('smProd'),typ=V('smType');
+    if(from>to){toast('From date cannot be after To date.',true);return null}
+    const moves=[];
+    const add=(date,type,ref,productId,qty,detail)=>{if(!date||date<from||date>to||(pid&&pid!==productId)||(typ&&typ!==type))return;const p=byId('products',productId);if(!p)return;moves.push({date,type,ref:ref||'',productId,product:p.name,packing:p.packing,qty:N(qty),detail:detail||''})};
+    DB.purchases.forEach(pu=>(pu.items||[]).forEach(it=>add(pu.date,'Purchase',pu.no,it.productId,it.pcs,pu.supplier||'')));
+    activeInv().forEach(iv=>(iv.items||[]).forEach(it=>add(iv.date,'Sale',iv.no,it.productId,-N(it.pcs),iv.shopName||'')));
+    DB.returns.forEach(r=>{if(r.toStock)add(r.date,'Return',r.no||'Return',r.productId,r.pcs,r.reason||r.shopName||'Returned to stock')});
+    DB.claims.forEach(c=>{if(c.deductStock)add(c.date,'Claim',c.no||'Claim',c.productId,-N(c.pcs),c.reason||c.company||'Stock deducted')});
+    moves.sort((a,b)=>a.date.localeCompare(b.date)||a.product.localeCompare(b.product));
+    const products=(pid?[byId('products',pid)].filter(Boolean):DB.products).map(p=>{const opening=stockAsOf(p.id,from<'0000'?from:shiftDate(from,-1));const inQty=sum(moves.filter(m=>m.productId===p.id&&m.qty>0),m=>m.qty),outQty=-sum(moves.filter(m=>m.productId===p.id&&m.qty<0),m=>m.qty),closing=stockAsOf(p.id,to);return {p,opening,inQty,outQty,closing,value:Math.max(0,closing)*costPerPc(p.id)}});
+    const rows=moves.map(m=>[fmtDate(m.date),m.type,m.ref,m.product,splitPcs({packing:m.packing},Math.abs(m.qty))+(m.qty<0?' OUT':' IN'),fmt(m.qty),m.detail]);
+    return {from,to,products,moves,rows,summary:[['Products tracked',products.length],['Stock received (pcs)',sum(moves.filter(m=>m.qty>0),m=>m.qty)],['Stock out (pcs)',-sum(moves.filter(m=>m.qty<0),m=>m.qty)],['Closing stock value',money(sum(products,x=>x.value))]]};
+  };
+  const draw=()=>{result=build();if(!result)return;$('#smOut').innerHTML=`<div class="kpis">${result.summary.map(x=>`<div class="kpi"><small>${esc(x[0])}</small><b>${esc(String(x[1]))}</b></div>`).join('')}</div><div class="card"><h3>Product stock summary</h3>${table([{t:'Product'},{t:'Opening pcs',n:1},{t:'Received pcs',n:1},{t:'Stock out pcs',n:1},{t:'Closing stock',n:1},{t:'Closing value',n:1}],result.products.map(x=>[esc(x.p.name),fmt(x.opening),fmt(x.inQty),fmt(x.outQty),splitPcs(x.p,x.closing),fmt(x.value)]),['Total','','','','',fmt(sum(result.products,x=>x.value))])}</div><div class="card"><h3>Date-wise stock movement history</h3>${table([{t:'Date'},{t:'Movement'},{t:'Reference'},{t:'Product'},{t:'Quantity'},{t:'Signed pcs',n:1},{t:'Supplier / Shop / Note'}],result.rows)}</div>`};
+  $('#smRun').onclick=draw;
+  $('#smPrint').onclick=()=>{if(!result)draw();if(!result)return;printDoc('report',`<h2>Store Manager Stock Movement Report</h2><p>Period: ${fmtDate(result.from)} — ${fmtDate(result.to)}</p><h3>Product stock summary</h3>${tableHTMLPrint([{t:'Product'},{t:'Opening pcs',n:1},{t:'Received pcs',n:1},{t:'Stock out pcs',n:1},{t:'Closing stock',n:1},{t:'Closing value',n:1}],result.products.map(x=>[x.p.name,fmt(x.opening),fmt(x.inQty),fmt(x.outQty),splitPcs(x.p,x.closing),fmt(x.value)]))}<h3>Date-wise movements</h3>${tableHTMLPrint([{t:'Date'},{t:'Movement'},{t:'Reference'},{t:'Product'},{t:'Quantity'},{t:'Signed pcs',n:1},{t:'Supplier / Shop / Note'}],result.rows)}`,{title:'Store Manager Stock Report',sub:fmtDate(result.from)+' to '+fmtDate(result.to)});};
+  $('#smXls').onclick=()=>{if(!result)draw();if(result)exportExcel('Store Manager Stock Report',[{t:'Date'},{t:'Movement'},{t:'Reference'},{t:'Product'},{t:'Quantity'},{t:'Signed pcs'},{t:'Supplier / Shop / Note'}],result.rows)};
+  ['smFrom','smTo','smProd','smType'].forEach(id=>$('#'+id).addEventListener('change',draw));draw();
+};
+
+/* =====================================================================
+   BOOKER PERSONAL REPORTS — scoped strictly to the logged-in booker
+   ===================================================================== */
+VIEWS.bookerReports=el=>{
+  if(ME.role!=='booker'&&!isAdmin()){el.innerHTML='<div class="card">This report is available to bookers only.</div>';return}
+  const bookerId=ME.role==='booker'?ME.id:(DB.users.find(u=>u.role==='booker')||{}).id;
+  const shopsFor=()=>DB.shops.filter(s=>s.bookerId===bookerId);
+  const startOfMonth=()=>today().slice(0,8)+'01';
+  el.innerHTML=`<div class="card"><h3>My Booker Reports</h3><p class="muted">Your own sales, recovery, assigned shops and market credit. Data is limited to your account.</p>
+   <div class="grid">${F('From date',inp('brFrom',startOfMonth(),'date'))}${F('To date',inp('brTo',today(),'date'))}</div>
+   <div class="row mt"><button class="btn pri" id="brRun">Generate report</button><button class="btn" id="brPrint">🖨️ Print</button><button class="btn" id="brXls">📊 Excel</button></div></div><div id="brOut"></div>`;
+  let report=null;
+  const build=()=>{
+    const from=V('brFrom')||startOfMonth(),to=V('brTo')||today();
+    if(from>to){toast('From date cannot be after To date.',true);return null}
+    const shops=shopsFor(),shopIds=new Set(shops.map(s=>s.id));
+    const invoices=activeInv().filter(i=>i.bookerId===bookerId&&inRange(i.date,from,to));
+    const recoveries=approvedRec().filter(r=>r.collectorId===bookerId&&inRange(r.approvedDate||r.date,from,to));
+    const recoveryTotal=sum(recoveries,r=>r.amount);
+    const sales=sum(invoices,i=>i.net),creditSales=sum(invoices,invDue);
+    const outstanding=sum(shops,s=>Math.max(0,shopDue(s.id)));
+    const visited=new Set(invoices.map(i=>i.shopId).filter(Boolean)).size;
+    const cards=[['Sales in period',money(sales)],['Invoices',invoices.length],['Shops sold to',visited],['Approved recovery',money(recoveryTotal)],['Credit given',money(creditSales)],['Current market credit',money(outstanding)]];
+    const shopRows=shops.map(sh=>{
+      const iv=invoices.filter(i=>i.shopId===sh.id);
+      const rec=recoveries.filter(r=>r.shopId===sh.id);
+      return [sh.id,sh.name,sh.route||'',iv.length,sum(iv,i=>i.net),sum(rec,r=>r.amount),Math.max(0,shopDue(sh.id))];
+    }).sort((a,b)=>b[6]-a[6]);
+    const recRows=recoveries.slice().sort((a,b)=>String(b.approvedDate||b.date).localeCompare(String(a.approvedDate||a.date))).map(r=>[fmtDate(r.approvedDate||r.date),r.shopName||'',r.method||'',r.status||'approved',N(r.amount),r.note||'']);
+    const invRows=invoices.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(i=>[fmtDate(i.date),i.no||'',i.shopName||'',i.payType||'',N(i.net),N(invDue(i))]);
+    return {from,to,cards,shopRows,recRows,invRows,cols:[{t:'Shop'},{t:'Route'},{t:'Invoices',n:1},{t:'Sales',n:1},{t:'Recovery',n:1},{t:'Current due',n:1}],rows:shopRows.map(r=>r.slice(1)),foot:['Total','',sum(shopRows,r=>r[3]),sum(shopRows,r=>r[4]),sum(shopRows,r=>r[5]),sum(shopRows,r=>r[6])]};
+  };
+  const draw=()=>{
+    report=build();if(!report)return;
+    $('#brOut').innerHTML=`<div class="kpis">${report.cards.map(c=>`<div class="kpi"><small>${esc(c[0])}</small><b>${esc(String(c[1]))}</b></div>`).join('')}</div>
+      <div class="card"><h3>My shop ledger summary <span class="sp"></span><span class="small muted">Click a shop to open its ledger</span></h3><div id="brShops"></div></div>
+      <div class="card"><h3>My sales invoices</h3>${table([{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales',n:1},{t:'Due',n:1}],report.invRows)}</div>
+      <div class="card"><h3>My approved recovery</h3>${table([{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount',n:1},{t:'Note'}],report.recRows)}</div>`;
+    const target=$('#brShops');target.innerHTML=table(report.cols,report.rows.map(r=>r.map(v=>typeof v==='number'?fmt(v):esc(v))),report.foot.map(v=>typeof v==='number'?fmt(v):esc(v)));
+    target.querySelectorAll('tbody tr').forEach((tr,i)=>{const shop=report.shopRows[i];if(!shop)return;tr.classList.add('clk');tr.title='Open shop ledger';tr.onclick=()=>showLedger(shop[0]);});
+  };
+  $('#brRun').onclick=draw;
+  $('#brPrint').onclick=()=>{if(!report)draw();if(!report)return;const r=report;printDoc('report',`<h2>Booker Performance Report</h2><p>Period: ${fmtDate(r.from)} — ${fmtDate(r.to)}</p><table class="kv">${r.cards.map(c=>`<tr><td>${esc(c[0])}</td><td>${esc(String(c[1]))}</td></tr>`).join('')}</table><h3>Shop ledger summary</h3>${tableHTMLPrint(r.cols,r.rows,r.foot)}<h3>Sales invoices</h3>${tableHTMLPrint([{t:'Date'},{t:'Invoice #'},{t:'Shop'},{t:'Payment'},{t:'Net sales',n:1},{t:'Due',n:1}],r.invRows)}<h3>Approved recovery</h3>${tableHTMLPrint([{t:'Date'},{t:'Shop'},{t:'Method'},{t:'Status'},{t:'Amount',n:1},{t:'Note'}],r.recRows)}`,{title:'Booker Performance Report',sub:fmtDate(r.from)+' to '+fmtDate(r.to)});};
+  $('#brXls').onclick=()=>{if(!report)draw();if(report)exportExcel('My Booker Report',report.cols,report.rows,report.foot)};
+  draw();
+};
+
 /* =====================================================================
    USERS & ACCESS (admin: developer ke ilawa sab users)
    ===================================================================== */
