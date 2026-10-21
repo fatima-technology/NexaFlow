@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#123b32">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="generator" content="NexaFlow ERP — Working Copy">
+<title>NexaFlow Distribution ERP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+ <div class="login-shell">
+  <div class="login-art">
+    <div><div class="co" id="loginCo">Your Distribution Company</div>
+    <h2>Every carton, route and rupee in one place.</h2>
+    <p id="loginTag">Order booking, delivery, recovery and accounts for your distribution team.</p></div>
+    <svg viewBox="0 0 380 220" aria-hidden="true"><path id="lgRoute" class="road" d="M10 190 C 80 190, 70 120, 140 120 S 200 60, 260 70 S 340 30, 370 20" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="2" stroke-dasharray="6 7"/><g fill="var(--side)" stroke-width="3"><circle class="stop" style="--d:0s" cx="10" cy="190" r="7" stroke="rgba(255,255,255,.6)"/><circle class="stop" style="--d:2.4s" cx="140" cy="120" r="7" stroke="rgba(255,255,255,.6)"/><circle class="stop" style="--d:4.6s" cx="260" cy="70" r="7" stroke="rgba(255,255,255,.6)"/><circle cx="370" cy="20" r="9" stroke="var(--saffron)"/></g><g class="van"><g class="van-body"><rect x="-24" y="-26" width="34" height="20" rx="3" fill="var(--saffron)"/><rect x="10" y="-20" width="13" height="14" rx="3" fill="#f6c46f"/><rect x="14" y="-17" width="6" height="5" rx="1" fill="rgba(26,29,58,.55)"/></g><circle cx="-15" cy="-4" r="4" fill="#fff"/><circle cx="14" cy="-4" r="4" fill="#fff"/><animateMotion dur="8s" repeatCount="indefinite" rotate="auto" calcMode="spline" keyPoints="0;1" keyTimes="0;1" keySplines=".45 0 .55 1"><mpath href="#lgRoute"/></animateMotion></g></svg>
+    <div class="foot" id="loginDev2">Developed by Fatima-Tech</div>
+  </div>
+  <div class="login-card">
+    <button class="mode-btn login-mode" data-mode-btn type="button">🌙</button>
+    <img id="loginLogo" class="login-logo hidden" alt="">
+    <h1 id="loginTitle">Distribution Management System</h1>
+    <p class="sub" id="loginSub">Sign in with your username and password</p>
+    <div class="f"><label for="lu">Username</label><input id="lu" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+    <div class="f mt"><label for="lp">Password</label>
+      <div class="pass-wrap"><input id="lp" type="password" autocomplete="current-password"><button type="button" id="lpToggle">Show</button></div>
+    </div>
+    <div class="login-err" id="loginErr"></div>
+    <button class="btn pri full" id="loginBtn">Sign in</button>
+    <button type="button" class="login-link" id="loginReset">Forgot / reset password</button>
+    <div class="dev" id="loginDev">Developed by Fatima-Tech</div>
+  </div>
+ </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <aside class="side">
+    <div class="side-brand"><img id="sideLogo" class="hidden" alt=""><div><b id="sideName">Distribution ERP</b><small id="sideTag">Sales &amp; Distribution</small></div></div>
+    <nav id="nav"></nav>
+    <div class="side-foot" id="sideFoot">Developed by Fatima-Tech</div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <div class="main">
+    <header class="top">
+      <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
+      <h2 id="pageTitle">Dashboard</h2>
+      <span class="chip" id="bizDate">—</span>
+      <button class="mode-btn" data-mode-btn type="button">🌙</button>
+      <button class="user-btn" id="userBtn"><span class="avatar" id="avatar">A</span><span class="un"><b id="uName">User</b> <small class="muted" id="uRole"></small></span></button>
+      <div class="user-menu" id="userMenu">
+        <div style="padding:8px 10px" class="small muted" id="uMenuInfo"></div>
+        <button data-act="theme">🎨 Theme & day / night</button>
+        <button data-act="password">🔑 Change my password</button>
+        <button data-act="logout" style="color:var(--bad)">🚪 Logout</button>
+      </div>
+    </header>
+    <main class="content" id="view"></main>
+  </div>
+  <nav class="bottom-nav" id="bottomNav"></nav>
+</div>
+
+<div class="modal-bg" id="modalBg"><div class="modal"><header><h3 id="mTitle"></h3><button class="btn sm" id="mClose">✕</button></header><div class="body" id="mBody"></div><footer id="mFoot"></footer></div></div>
+<div id="welcome" role="dialog" aria-modal="true" aria-labelledby="wTitle"></div>
+<div id="toast"></div>
+<input type="file" id="hiddenFile" class="hidden">
+
+<script src="app.js" defer></script>
+</body>
+</html>
