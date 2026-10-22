@@ -847,10 +847,10 @@ const MODULES=[
   {id:'storeReports',label:'Store Manager Reports',icon:'🏬',group:'Reports'},
   {id:'attendanceLog',label:'Attendance & timings',icon:'🕒',group:'Staff'},
   {id:'users',label:'Users & access',icon:'⚙️',group:'System'},
-  {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'System'},
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
   {id:'help',label:'User manual',icon:'📘',group:'System'},
-  {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true}
+  {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true},
+  {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'Developer',devOnly:true}
 ];
 const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man',staff:'Staff (no login)'};
 const ROLE_DEFAULTS={
@@ -943,7 +943,7 @@ function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
   if(mid==='orderSync')return ME.role==='booker';
-  if(mid==='liveOrders'||mid==='fsSettings')return isAdmin();
+  if(mid==='liveOrders')return isAdmin();
   if(mid==='attendanceLog'&&isAdmin())return true;
   if(isDev())return true;
   if(!S().modules[mid]&&mid!=='help')return false;
@@ -1925,7 +1925,7 @@ async function syncUI(){
   if(Orders.syncing)return;
   const p=Orders.syncAll();if(CUR==='orderSync')render();
   const r=await p;if(!r)return;
-  if(r.notConfigured)toast('Firebase abhi configure nahi hai. Admin se "Order sync settings" mein config save karwayein.',true);
+  if(r.notConfigured)toast('Firebase abhi configure nahi hai. Developer se config save karwayein.',true);
   else{let m=`${r.ok} orders synced, ${r.fail} failed`;if(r.dayEnds)m+=` • ${r.dayEnds} Day End upload hua`;if(r.net)m+=' — internet nahi hai ya bohat slow hai';else if(r.fail&&r.errors[0])m+=' — '+r.errors[0];toast(m,r.fail>0)}
   if(CUR==='orderSync'||CUR==='invoices')render();
 }
@@ -1993,7 +1993,7 @@ function drawLive(){
   const d=$('#lvDays');if(d)d.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Band hua'},{t:'Orders',n:1},{t:'Total',n:1}],Live.days.filter(x=>!LV.booker||x.bookerId===LV.booker).map(x=>[fmtDate(x.date),esc(x.bookerName),new Date(x.closedAtMs).toLocaleString(),x.orderCount,fmt(x.total)]));
 }
 VIEWS.liveOrders=el=>{
-  if(!FS.ok){el.innerHTML=`<div class="card"><h3>Booker orders (live)</h3><p>Firestore abhi configure nahi hai. Pehle <b>Order sync settings</b> mein Firebase config save karein.</p><div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div></div>`;return}
+  if(!FS.ok){el.innerHTML=`<div class="card"><h3>Booker orders (live)</h3><p>Firestore abhi configure nahi hai. Developer se Firebase config save karwayein.</p>${isDev()?'<div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div>':''}</div>`;return}
   const bk=DB.users.filter(u=>u.role==='booker');
   el.innerHTML=`<div class="card"><h3>Booker orders (live)<span class="sp"></span><span id="lvState"></span></h3>
     <div class="grid">${F('Date',inp('lvD',LV.date,'date'))}${F('Booker',sel('lvB',bk.map(u=>({v:u.id,t:u.name||u.username})),LV.booker,'Sab bookers'))}${F('Search',inp('lvQ',LV.q,'search','placeholder="Shop, order #"'))}</div>
@@ -2036,7 +2036,7 @@ service cloud.firestore {
 VIEWS.fsSettings=el=>{
   const raw=FS.cfg?(JSON.stringify(FS.cfg,null,2)):'';
   el.innerHTML=`<div class="card"><h3>Order sync settings (Firebase Firestore)</h3>
-    <p class="muted">Yeh setting is phone / computer par <b>ek baar</b> save hoti hai (admin ya developer is device par login karke). Jab tak config save nahi, app poori tarah offline chalti hai aur orders pending rehte hain.</p>
+    <p class="muted">Yeh setting is phone / computer par <b>ek baar</b> save hoti hai (developer is device par login karke). Jab tak config save nahi, app poori tarah offline chalti hai aur orders pending rehte hain.</p>
     <p>Abhi: ${FS.ok?badge('Configured: '+esc(FS.cfg.projectId),'ok'):badge('Configure nahi hai','warn')}</p>
     <div class="f"><label>Firebase config (console → Project settings → Your apps → firebaseConfig)</label><textarea id="fsCfg" rows="9" style="font-family:monospace;width:100%" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'>${esc(raw)}</textarea></div>
     <p class="msg small" id="fsMsg"></p>

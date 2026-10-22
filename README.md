@@ -20,7 +20,8 @@ The default theme is now **NexaFlow Modern** with a forest-green / mint palette,
 - Internet wapas aane par pending orders khud upload **nahi** hote; booker **Sync** dabata hai. Document ID = order UUID, is liye dobara Sync par duplicate nahi banta.
 - Synced orders phone se delete nahi hote; woh Day End tak IndexedDB mein rehte hain. `navigator.storage.persist()` mangi jati hai.
 - **Day End** (Sales → Sync & Day End): pending orders hon to band. Tasdeeq ke baad woh date us booker ke liye lock (sirf view). Day End Firestore (`dayEnds/{bookerId}_{date}`) mein bhi save hota hai aur admin ko dikhta hai.
-- Admin/developer: **Order sync settings** mein Firebase config paste karein (har device par ek baar; config code mein hardcode nahi). **Booker orders (live)** mein sab bookers ke synced orders real-time dikhte hain.
+- Sirf developer: **Order sync settings** (Developer group) mein Firebase config paste karein (har device par ek baar; config code mein hardcode nahi). Admin aur booker ko yeh screen nahi dikhti.
+- Admin:  **Booker orders (live)** mein sab bookers ke synced orders real-time dikhte hain.
 
 ### Firebase setup (ek baar)
 1. Firestore Database banayein. 2. Authentication → Anonymous enable karein. 3. `firestore.rules` ko Rules tab mein publish karein.
