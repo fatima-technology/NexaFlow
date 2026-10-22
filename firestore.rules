@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function closed(b, d) { return exists(/databases/$(database)/documents/dayEnds/$(b + '_' + d)); }
+    function okOrder(o, id) {
+      return o.uuid == id && o.bookerId is string && o.date is string
+        && o.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && o.net is number;
+    }
+    // Orders: Day End ho chuki date par koi write nahi (booker ke liye)
+    match /orders/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && okOrder(request.resource.data, id)
+                    && !closed(request.resource.data.bookerId, request.resource.data.date);
+      allow update: if signedIn() && okOrder(request.resource.data, id)
+                    && request.resource.data.bookerId == resource.data.bookerId
+                    && !closed(resource.data.bookerId, resource.data.date)
+                    && !closed(request.resource.data.bookerId, request.resource.data.date);
+      allow delete: if false;
+    }
+    // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
+    match /dayEnds/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.bookerId is string && request.resource.data.date is string
+                    && id == request.resource.data.bookerId + '_' + request.resource.data.date;
+      allow update, delete: if false;
+    }
+  }
+}

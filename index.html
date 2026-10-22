@@ -656,6 +656,15 @@ body.mode-night #login .lg-mini-d span{background:#DCE8EE}body.mode-night #login
 @media(min-width:901px){#login .login-shell{height:100%;min-height:0;flex-wrap:nowrap}#login .login-art,#login .login-card{height:100%;overflow-y:auto}#login .login-card{padding:clamp(20px,4vh,48px) 24px;align-items:center}#login .login-card>*{margin-left:auto;margin-right:auto}}
 @media(max-width:900px){#login .login-art{display:none!important}.lg-mbrand{display:flex}#login .login-card{justify-content:flex-start;padding:28px 24px 32px;min-height:100vh}}
 @media(min-width:901px) and (max-height:720px){#login .login-card input{height:44px;min-height:44px;font-size:16px}#login .login-card .btn.pri{height:46px;min-height:46px}#login .login-card h1{font-size:26px}#login .login-card p.sub{font-size:15px}.lg-chips{display:none}}
+
+/* Offline-first orders: status bar */
+.netbar{display:none;position:sticky;top:0;z-index:30;height:34px;align-items:center;gap:10px;padding:0 16px;font-size:13px;font-weight:600;color:#fff;background:#15803d;white-space:nowrap;overflow:hidden}
+.netbar.on{display:flex}.netbar.bad{background:#b42318}
+.netbar .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
+.netbar b{overflow:hidden;text-overflow:ellipsis}.netbar .sp{flex:1}.netbar .nb-more{font-weight:500;opacity:.92}
+.netbar .nb-btn{flex:0 0 auto;border:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer;clip-path:none}
+.netbar .nb-btn:disabled{opacity:.7;cursor:progress}
+body.has-netbar .top{top:34px}
 </style>
 </head>
 <body>
@@ -732,6 +741,7 @@ body.mode-night #login .lg-mini-d span{background:#DCE8EE}body.mode-night #login
   </aside>
   <div class="scrim" id="scrim"></div>
   <div class="main">
+    <div class="netbar" id="netBar" role="status" aria-live="polite"></div>
     <header class="top">
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <h2 id="pageTitle">Dashboard</h2>
@@ -813,6 +823,8 @@ function defaultPrint(){const o={};for(const k in PRINT_TYPES){o[k]={title:PRINT
 const MODULES=[
   {id:'dashboard',label:'Dashboard',icon:'📊',group:'Main'},
   {id:'pos',label:'Order booking / POS',icon:'🛒',group:'Sales'},
+  {id:'orderSync',label:'Sync & Day End',icon:'🔄',group:'Sales'},
+  {id:'liveOrders',label:'Booker orders (live)',icon:'📡',group:'Sales'},
   {id:'invoices',label:'Sales invoices',icon:'📄',group:'Sales'},
   {id:'delivery',label:'Delivery dates',icon:'📅',group:'Sales'},
   {id:'picklist',label:'Picklist / load sheet',icon:'🚚',group:'Sales'},
@@ -835,6 +847,7 @@ const MODULES=[
   {id:'storeReports',label:'Store Manager Reports',icon:'🏬',group:'Reports'},
   {id:'attendanceLog',label:'Attendance & timings',icon:'🕒',group:'Staff'},
   {id:'users',label:'Users & access',icon:'⚙️',group:'System'},
+  {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'System'},
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
   {id:'help',label:'User manual',icon:'📘',group:'System'},
   {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true}
@@ -842,7 +855,7 @@ const MODULES=[
 const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man',staff:'Staff (no login)'};
 const ROLE_DEFAULTS={
   admin:MODULES.filter(m=>!m.devOnly).map(m=>m.id),
-  booker:['dashboard','pos','invoices','recovery','shops','bookerReports','help'],
+  booker:['dashboard','pos','orderSync','invoices','recovery','shops','bookerReports','help'],
   storemanager:['dashboard','products','purchases','suppliers','returns','claims','storeReports','help'],
   kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','recovery','shops','expenses','help'],
   supplyman:['dashboard','collection','help'],
@@ -929,6 +942,8 @@ const isAdmin=()=>ME&&(ME.role==='admin'||ME.role==='developer');
 function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
+  if(mid==='orderSync')return ME.role==='booker';
+  if(mid==='liveOrders'||mid==='fsSettings')return isAdmin();
   if(mid==='attendanceLog'&&isAdmin())return true;
   if(isDev())return true;
   if(!S().modules[mid]&&mid!=='help')return false;
@@ -1513,7 +1528,7 @@ function buildNav(){
   // Keep the active screen's group open after navigation; other groups remain user-toggleable.
   if(activeGroup)NAV_GROUPS_OPEN[activeGroup]=true;
   $('#nav').innerHTML=Object.entries(groups).map(([g,ms])=>{const open=!!NAV_GROUPS_OPEN[g];return `<div class="nav-group${open?'':' closed'}" data-nav-group="${esc(g)}"><span><button type="button" class="nav-group-toggle" data-toggle-group="${esc(g)}" aria-expanded="${open}"><span>${esc(g)}</span><span class="nav-chevron">▾</span></button></span><div class="nav-items">${ms.map(m=>`<button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button>`).join('')}</div></div>`}).join('');
-  const prefs={booker:['dashboard','pos','recovery','shops'],supplyman:['dashboard','collection','help'],kpo:['dashboard','pos','invoices','collection']}[ME.role]||['dashboard','pos','invoices','reports'];
+  const prefs={booker:['dashboard','pos','orderSync','recovery'],supplyman:['dashboard','collection','help'],kpo:['dashboard','pos','invoices','collection']}[ME.role]||['dashboard','pos','invoices','reports'];
   const bn=prefs.filter(canSee).slice(0,4).map(id=>MODULES.find(m=>m.id===id));
   $('#bottomNav').style.gridTemplateColumns=`repeat(${bn.length+1},1fr)`;
   $('#bottomNav').innerHTML=bn.map(m=>`<button data-go="${m.id}" class="${m.id===CUR?'on':''}"><i>${m.icon}</i>${esc(m.label.split(/[ /]/)[0])}</button>`).join('')+`<button data-menu="1"><i>☰</i>More</button>`;
@@ -1537,7 +1552,7 @@ function countUp(cards,onlyChanged){
 }
 function render(){
   if(!ME)return;if(!canSee(CUR))CUR=MODULES.find(m=>canSee(m.id)).id;
-  const m=MODULES.find(x=>x.id===CUR);$('#pageTitle').textContent=m.label;buildNav();
+  const m=MODULES.find(x=>x.id===CUR);$('#pageTitle').textContent=m.label;buildNav();NetBar.update(true);
   const v=$('#view');v.innerHTML='';try{(VIEWS[CUR]||(()=>v.innerHTML='<div class="card">Coming soon</div>'))(v)}catch(e){console.error(e);v.innerHTML=`<div class="card"><b>There was a problem on this screen:</b> ${esc(e.message)}</div>`}
   const anim=NAV_ANIM;NAV_ANIM=false;
   if(anim){v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter');clearTimeout(render._t);render._t=setTimeout(()=>v.classList.remove('enter'),900)}
@@ -1548,6 +1563,7 @@ function startApp(){
   $('#avatar').textContent=(ME.name||ME.username)[0].toUpperCase();$('#uName').textContent=ME.name||ME.username;$('#uRole').textContent=ME.role==='developer'?'Developer':ROLES[ME.role]||ME.role;
   $('#uMenuInfo').textContent=(ME.name||ME.username)+' • '+$('#uRole').textContent;
   tickClock();
+  Orders.init().then(()=>{Net.start();NetBar.update();if(['orderSync','invoices','pos','fsSettings','liveOrders'].includes(CUR))render()});
   const h=location.hash.slice(1);go(h&&MODULES.some(m=>m.id===h)?h:'dashboard');
 }
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.kpi[data-go]')){e.preventDefault();go(e.target.dataset.go)}});
@@ -1643,6 +1659,7 @@ VIEWS.pos=el=>{
   if(!ed&&invLimitReached()){el.innerHTML=`<div class="card"><h3>Invoice limit reached</h3><p>${invUsed()} / ${N(LIC().limit)||200} invoices used. New invoices cannot be created until the full version is purchased.</p><div class="row mt"><button class="btn pri" id="posBuy">📞 Contact developer to purchase</button></div></div>`;$('#posBuy').onclick=showBuyDialog;return}
   const shops=visibleShops();const bookers=usersByRole('booker');const sms=usersByRole('supplyman');
   el.innerHTML=`<div class="card"><h3>${ed?'Invoice edit: '+esc(ed.no):'New order'}<span class="sp"></span>${ed?'<button class="btn sm bad" id="posCancelEdit">Cancel edit</button>':''}</h3>
+   <div class="note hidden" id="pLock" style="border-color:var(--bad);margin-bottom:10px"></div>
    <div class="grid">
     ${F('Order date',inp('pDate',ed?ed.date:today(),'date'))}
     ${F('Delivery date',inp('pDel',ed?ed.deliveryDate:addDays(today(),1),'date'))}
@@ -1687,7 +1704,10 @@ VIEWS.pos=el=>{
     POS.items.push({productId:p.id,name:p.name,brand:p.brand||'',packing:N(p.packing),pcs,rate,retail:N(p.retailPc),gross,discType:dt,discVal:dv,disc,cost:r2(costPerPc(p.id))});
     ['pProd','pCtn','pPcs','pRate','pDVal'].forEach(i=>$('#'+i).value='');$('#pHint').textContent='';$('#pProd').focus();draw();
   };
+  const lockChk=()=>{const on=ME.role==='booker'&&Orders.lockedOn(ME.id,V('pDate'));const b=$('#pLock');b.classList.toggle('hidden',!on);b.innerHTML=on?'🔒 <b>'+fmtDate(V('pDate'))+'</b> ka Day End ho chuka hai — is date par naya order ya edit nahi ho sakta. Dusri date chunein.':'';$('#pSave').disabled=on;$('#pSavePrint').disabled=on};
+  $('#pDate').oninput=lockChk;
   const saveInv=print=>{
+    if(!Orders.guardLock(V('pDate'))||(ed&&!Orders.guardLock(ed.date)))return;
     if(!ed&&invLimitReached())return showBuyDialog();
     const shop=byId('shops',V('pShop'));if(!shop)return toast('Select a shop.',true);if(!guard(V('pDate'),ed&&ed.date))return;if(!POS.items.length)return toast('Add at least one item.',true);
     const T=posItemTotals();const due=shopDue(shop.id)-(ed&&ed.shopId===shop.id?invDue(ed):0);
@@ -1695,12 +1715,12 @@ VIEWS.pos=el=>{
     const bk=byId('users',V('pBooker')),sm=byId('users',V('pSM'));
     const rec={date:V('pDate'),deliveryDate:V('pDel')||V('pDate'),bookerId:V('pBooker'),bookerName:bk?bk.name||bk.username:'',supplymanId:V('pSM'),supplyman:sm?sm.name||sm.username:'',shopId:shop.id,shopName:shop.name,route:shop.route||'',payType:V('pPay'),accountId:V('pAcc')||'acc_cash',items:POS.items,gross:T.g,discount:T.d,tax:T.tax,net:T.net};
     let iv;if(ed){Object.assign(ed,rec,{editedBy:ME.username,editedAt:nowStamp()});iv=ed;log('Sales','Invoice edited',ed.no,money(T.net))}
-    else{DB.meta.invMade=invUsed()+1;iv={id:uid(),no:nextNo('inv',S().invoicePrefix||'INV-'),status:'booked',createdBy:ME.username,createdAt:nowStamp(),...rec};DB.invoices.push(iv);log('Sales','Invoice created',iv.no,shop.name+' '+money(T.net))}
-    save();POS={items:[],editId:null};toast('Invoice '+iv.no+' saved.');if(print)printInvoice(iv);render();
+    else{DB.meta.invMade=invUsed()+1;iv={id:ME.role==='booker'?uuid():uid(),no:nextNo('inv',S().invoicePrefix||'INV-'),status:'booked',createdBy:ME.username,createdAt:nowStamp(),...rec};DB.invoices.push(iv);log('Sales','Invoice created',iv.no,shop.name+' '+money(T.net))}
+    save();if(ME.role==='booker')Orders.queue(iv);POS={items:[],editId:null};toast('Invoice '+iv.no+' saved.');if(print)printInvoice(iv);render();
   };
   $('#pSave').onclick=()=>saveInv(false);$('#pSavePrint').onclick=()=>saveInv(true);
   if($('#posCancelEdit'))$('#posCancelEdit').onclick=()=>{POS={items:[],editId:null};render()};
-  draw();
+  draw();lockChk();
 };
 function invoiceBody(iv){
   const sh=byId('shops',iv.shopId)||{};const prevDue=DB.invoices.includes(iv)?shopDue(iv.shopId)-invDue(iv):(iv.shopId?shopDue(iv.shopId):0);
@@ -1723,18 +1743,314 @@ VIEWS.invoices=el=>{
   let list=[];
   const run=()=>{const q=V('ivQ').toLowerCase(),dt=V('ivDT');
     list=DB.invoices.filter(i=>inRange(i[dt],V('ivFrom'),V('ivTo'))&&(!V('ivSt')||i.status===V('ivSt'))&&(!q||[i.no,i.shopName,i.bookerName,i.supplyman].join(' ').toLowerCase().includes(q))&&(ME.role!=='booker'||i.bookerId===ME.id)).sort((a,b)=>b.no.localeCompare(a.no));
-    $('#ivOut').innerHTML=table([{t:'✓'},{t:'Inv #'},{t:'Date'},{t:'Delivery'},{t:'Shop'},{t:'Booker'},{t:'Type'},{t:'Net',n:1},{t:'Due',n:1},{t:'Status'},{t:'Actions'}],
-      list.map(i=>[`<input type="checkbox" data-ck="${i.id}">`,esc(i.no),fmtDate(i.date),fmtDate(i.deliveryDate),esc(i.shopName),esc(i.bookerName),i.payType,fmt(i.net),fmt(invDue(i)),i.status==='cancelled'?badge('Cancelled','bad'):invDue(i)<=0?badge('Paid','ok'):badge('Due','warn'),
-       `<div class="row"><button class="btn sm" data-pr="${i.id}">🖨️</button>${i.status!=='cancelled'&&(isAdmin()||ME.role==='kpo'||i.bookerId===ME.id)?`<button class="btn sm" data-ed="${i.id}">✏️</button>`:''}${isAdmin()?`<button class="btn sm bad" data-del="${i.id}">🗑️</button>`:''}</div>`]),
-      ['',list.length+' invoices','','','','','',fmt(sum(list.filter(i=>i.status!=='cancelled'),i=>i.net)),fmt(sum(list,invDue)),'','']);
+    const bk=ME.role==='booker';
+    $('#ivOut').innerHTML=table([{t:'✓'},{t:'Inv #'},{t:'Date'},{t:'Delivery'},{t:'Shop'},{t:'Booker'},{t:'Type'},{t:'Net',n:1},{t:'Due',n:1},{t:'Status'},...(bk?[{t:'Sync'}]:[]),{t:'Actions'}],
+      list.map(i=>[`<input type="checkbox" data-ck="${i.id}">`,esc(i.no),fmtDate(i.date),fmtDate(i.deliveryDate),esc(i.shopName),esc(i.bookerName),i.payType,fmt(i.net),fmt(invDue(i)),i.status==='cancelled'?badge('Cancelled','bad'):invDue(i)<=0?badge('Paid','ok'):badge('Due','warn'),...(bk?[syncBadge(i.id)]:[]),
+       `<div class="row"><button class="btn sm" data-pr="${i.id}">🖨️</button>${i.status!=='cancelled'&&(isAdmin()||ME.role==='kpo'||i.bookerId===ME.id)&&!(bk&&Orders.lockedOn(ME.id,i.date))?`<button class="btn sm" data-ed="${i.id}">✏️</button>`:''}${isAdmin()?`<button class="btn sm bad" data-del="${i.id}">🗑️</button>`:''}</div>`]),
+      ['',list.length+' invoices','','','','','',fmt(sum(list.filter(i=>i.status!=='cancelled'),i=>i.net)),fmt(sum(list,invDue)),'',...(bk?['']:[]),'']);
     $$('#ivOut [data-pr]').forEach(b=>b.onclick=()=>printInvoice(byId('invoices',b.dataset.pr)));
-    $$('#ivOut [data-ed]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.ed);if(!guard(iv.date))return;if(invCollected(iv.id)>0&&!confirm('Cash has already been collected on this invoice. Edit anyway?'))return;POS={items:JSON.parse(JSON.stringify(iv.items)),editId:iv.id};go('pos')});
-    $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);if(!guard(iv.date))return;confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net));save();run();toast('Deleted.')})});
+    $$('#ivOut [data-ed]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.ed);if(!guard(iv.date)||!Orders.guardLock(iv.date))return;if(invCollected(iv.id)>0&&!confirm('Cash has already been collected on this invoice. Edit anyway?'))return;POS={items:JSON.parse(JSON.stringify(iv.items)),editId:iv.id};go('pos')});
+    $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);if(!guard(iv.date)||!Orders.guardLock(iv.date))return;confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net));save();run();toast('Deleted.')})});
   };
   ['ivFrom','ivTo','ivDT','ivQ','ivSt'].forEach(id=>$('#'+id).oninput=run);
   $('#ivPrintSel').onclick=()=>{const ids=$$('#ivOut [data-ck]:checked').map(c=>c.dataset.ck);if(!ids.length)return toast('Tick the invoices first.',true);printDoc('invoice',ids.map(id=>invoiceBody(byId('invoices',id))))};
   $('#ivXls').onclick=()=>exportExcel('Sales invoices',[{t:'Inv #'},{t:'Date'},{t:'Delivery'},{t:'Shop'},{t:'Booker'},{t:'Supply man'},{t:'Type'},{t:'Gross',n:1},{t:'Discount',n:1},{t:'Net',n:1},{t:'Due',n:1},{t:'Status'}],list.map(i=>[i.no,i.date,i.deliveryDate,i.shopName,i.bookerName,i.supplyman,i.payType,i.gross,i.discount,i.net,invDue(i),i.status]));
   run();
+};
+
+/* =====================================================================
+   OFFLINE-FIRST ORDERS — IndexedDB outbox, manual Firestore sync, booker Day End
+   Upload Firestore REST (fetch) se hota hai: har request par 9 sec ka timeout lagta hai aur
+   SDK ki hidden queue pending orders ko khud-ba-khud upload nahi kar sakti (sirf Sync button).
+   Order ka Firestore document ID = order ka UUID, is liye dobara sync par duplicate nahi banta.
+   ===================================================================== */
+const OSYNC={TIMEOUT:9000,PROBE_MS:25000,SDK:'https://www.gstatic.com/firebasejs/8.10.1/'};
+const uuid=()=>{try{if(crypto.randomUUID)return crypto.randomUUID()}catch(e){}const a=new Uint8Array(16);crypto.getRandomValues(a);a[6]=a[6]&15|64;a[8]=a[8]&63|128;const h=Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20)};
+const clockOf=ms=>ms?new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+
+/* IndexedDB 'nexaflow_orders': orders (UUID key), dayends, meta (Firebase config / auth) */
+const ODB={db:null,_p:null,
+  open(){return this._p||(this._p=new Promise(res=>{try{if(!window.indexedDB)return res(null);const r=indexedDB.open('nexaflow_orders',1);
+    r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('orders',{keyPath:'uuid'});d.createObjectStore('dayends',{keyPath:'key'});d.createObjectStore('meta',{keyPath:'k'})};
+    r.onsuccess=()=>{this.db=r.result;res(r.result)};r.onerror=()=>res(null);r.onblocked=()=>res(null)}catch(e){res(null)}}))},
+  tx(store,mode,fn){return new Promise((res,rej)=>{if(!this.db)return rej(new Error('IndexedDB nahi mili'));try{const t=this.db.transaction(store,mode);const q=fn(t.objectStore(store));t.oncomplete=()=>res(q&&q.result);t.onerror=t.onabort=()=>rej(t.error)}catch(e){rej(e)}})},
+  put(store,v){return this.tx(store,'readwrite',s=>s.put(v))},
+  del(store,k){return this.tx(store,'readwrite',s=>s.delete(k))},
+  all(store){return this.tx(store,'readonly',s=>s.getAll())},
+  get(store,k){return this.tx(store,'readonly',s=>s.get(k))}
+};
+
+function parseFbConfig(txt){
+  let t=String(txt||'');const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)throw new Error('Config mein { ... } nahi mila.');
+  t=t.slice(a,b+1);let cfg;
+  try{cfg=JSON.parse(t)}catch(e){try{cfg=JSON.parse(t.replace(/(^|\s)\/\/.*$/gm,'').replace(/'/g,'"').replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g,'$1"$2":').replace(/,\s*}/g,'}'))}catch(e2){throw new Error('Config samajh nahi aaya. Firebase console se firebaseConfig = { ... } poora copy karein.')}}
+  if(!cfg||!cfg.projectId||!cfg.apiKey)throw new Error('Config mein apiKey aur projectId zaroori hain.');
+  return cfg;
+}
+/* har network call ko deadline: jawab na aaye ya net toot jaye to {net:true} error, UI kabhi block nahi hota */
+function withTimeout(ms,fn){
+  const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms);
+  return fn(ac.signal).catch(e=>{if(ac.signal.aborted)throw Object.assign(new Error('Server ka jawab nahi aaya (timeout).'),{net:true,timeout:true});if(!e.http)e.net=true;throw e}).finally(()=>clearTimeout(t));
+}
+
+/* Firestore REST client */
+const FS={cfg:null,auth:null,tok:null,noAuth:false,
+  async load(){const r=await ODB.get('meta','fsConfig').catch(()=>null);this.cfg=null;if(r&&r.v){try{this.cfg=parseFbConfig(r.v.raw)}catch(e){}}const a=await ODB.get('meta','fsAuth').catch(()=>null);this.auth=a?a.v:null;this.tok=null},
+  async save(raw){const cfg=parseFbConfig(raw);await ODB.put('meta',{k:'fsConfig',v:{raw}});await ODB.del('meta','fsAuth').catch(()=>{});this.cfg=cfg;this.auth=null;this.tok=null;this.noAuth=false;return cfg},
+  async clear(){await ODB.del('meta','fsConfig');await ODB.del('meta','fsAuth').catch(()=>{});this.cfg=null;this.auth=null;this.tok=null},
+  get ok(){return !!(this.cfg&&this.cfg.projectId&&this.cfg.apiKey)},
+  base(){return'https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(this.cfg.projectId)+'/databases/(default)/documents'},
+  async call(url,opt,sig){
+    const r=await fetch(url,{...opt,signal:sig});let j=null;try{j=await r.json()}catch(e){}
+    if(!r.ok){const er=j&&(j.error||(Array.isArray(j)&&j[0]&&j[0].error));const e=new Error((er&&er.message)||('HTTP '+r.status));e.http=r.status;e.status=er&&er.status;throw e}
+    return j},
+  /* Anonymous Firebase Auth (REST). Enable na ho to bina token chalta hai; rules decide karte hain */
+  async token(sig){
+    if(this.noAuth)return null;if(this.tok&&this.tok.exp>Date.now()+60000)return this.tok.id;
+    const k=encodeURIComponent(this.cfg.apiKey);let r;
+    if(this.auth&&this.auth.refreshToken){
+      try{r=await this.call('https://securetoken.googleapis.com/v1/token?key='+k,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(this.auth.refreshToken)},sig);
+        this.tok={id:r.id_token,exp:Date.now()+N(r.expires_in)*1000};return this.tok.id}catch(e){if(!(e.http>=400&&e.http<500))throw e;this.auth=null}}
+    try{r=await this.call('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+k,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})},sig)}
+    catch(e){if(e.http>=400&&e.http<500){this.noAuth=true;return null}throw e}
+    this.tok={id:r.idToken,exp:Date.now()+N(r.expiresIn)*1000};this.auth={refreshToken:r.refreshToken,uid:r.localId};ODB.put('meta',{k:'fsAuth',v:this.auth}).catch(()=>{});return this.tok.id},
+  async req(path,opt,sig){const t=await this.token(sig);const h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;
+    try{return await this.call(this.base()+path,{...opt,headers:h},sig)}catch(e){if(e.http===401&&this.tok){this.tok=null;this.auth=null}throw e}},
+  val(v){return typeof v==='number'?(Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v}):typeof v==='boolean'?{booleanValue:v}:{stringValue:String(v??'')}},
+  doc(o){const f={};for(const k in o)f[k]=this.val(o[k]);return JSON.stringify({fields:f})},
+  un(d){const o={};for(const k in d.fields||{}){const v=d.fields[k];o[k]=v.stringValue!==undefined?v.stringValue:v.integerValue!==undefined?+v.integerValue:v.doubleValue!==undefined?v.doubleValue:v.booleanValue}return o},
+  /* PATCH bina updateMask = poora document set (naya ya overwrite); ID = UUID, is liye duplicate mumkin nahi */
+  putOrder(o,sig){
+    const d={uuid:o.uuid,bookerId:o.bookerId,bookerName:o.bookerName,date:o.date,no:o.no,shopId:o.shopId||'',shopName:o.shopName,route:o.route||'',payType:o.payType,net:o.net,itemCount:o.itemCount,status:'synced',createdAtMs:o.createdAtMs,updatedAtMs:o.updatedAtMs,syncedAtMs:Date.now(),payload:o.payload||''};
+    return this.req('/orders/'+encodeURIComponent(o.uuid),{method:'PATCH',body:this.doc(d)},sig)},
+  /* Day End document sirf ek baar ban sakta hai (create-only); dobara aaye to "pehle se band" = kamyab */
+  async putDayEnd(d,sig){
+    const p='/dayEnds/'+encodeURIComponent(d.key);
+    try{await this.req(p+'?currentDocument.exists=false',{method:'PATCH',body:this.doc({bookerId:d.bookerId,bookerName:d.bookerName,date:d.date,closedAtMs:d.closedAtMs,orderCount:d.orderCount,total:d.total})},sig)}
+    catch(e){if(e.http===409||e.http===403||e.http===400){try{await this.req(p,{method:'GET'},sig);return}catch(e2){}}throw e}},
+  async dayEnds(bookerId,sig){
+    const r=await this.req(':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'dayEnds'}],where:{fieldFilter:{field:{fieldPath:'bookerId'},op:'EQUAL',value:{stringValue:bookerId}}}}})},sig);
+    return(r||[]).filter(x=>x.document).map(x=>{const o=this.un(x.document);return{key:o.bookerId+'_'+o.date,bookerId:o.bookerId,bookerName:o.bookerName,date:o.date,closedAtMs:o.closedAtMs,orderCount:o.orderCount,total:o.total}})},
+  async test(sig){await this.req('/dayEnds?pageSize=1',{method:'GET'},sig)}
+};
+
+/* internet ka asli haal: navigator.onLine akela bharosemand nahi, is liye halka probe + har upload ka natija dekhte hain */
+const Net={reach:null,t:null,
+  get up(){return navigator.onLine!==false&&this.reach!==false},
+  set(v){if(this.reach!==v){this.reach=v;NetBar.update()}},
+  async probe(){
+    if(navigator.onLine===false){this.set(false);return}
+    const ac=new AbortController(),t=setTimeout(()=>ac.abort(),6000);
+    try{await fetch(FS.ok?'https://firestore.googleapis.com/':'https://www.gstatic.com/generate_204',{mode:'no-cors',cache:'no-store',signal:ac.signal});this.set(true)}catch(e){this.set(false)}finally{clearTimeout(t)}},
+  start(){
+    if(this.t)return;
+    window.addEventListener('online',()=>this.probe());window.addEventListener('offline',()=>{this.reach=false;NetBar.update()});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.probe()});
+    this.t=setInterval(()=>{if(!document.hidden&&ME)this.probe()},OSYNC.PROBE_MS);this.probe()}
+};
+
+/* orders (IndexedDB) + Sync + Day End */
+const Orders={map:new Map(),days:new Map(),ready:false,syncing:false,last:null,persisted:null,_init:null,
+  init(){return this._init||(this._init=(async()=>{
+    await ODB.open();
+    if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load()}catch(e){console.error(e)}}
+    try{if(navigator.storage&&navigator.storage.persist)this.persisted=(await navigator.storage.persisted())||(await navigator.storage.persist())}catch(e){}
+    this.ready=true})())},
+  mine(date){return Array.from(this.map.values()).filter(o=>ME&&o.bookerId===ME.id&&(!date||o.date===date)).sort((a,b)=>a.createdAtMs-b.createdAtMs)},
+  pendingN(date){return this.mine(date).filter(o=>o.status==='pending').length},
+  lockedOn(bookerId,date){return this.days.has(bookerId+'_'+date)},
+  /* UI ki hifazat: band date par naya order / edit / delete nahi (Firestore rules bhi yehi rokte hain) */
+  guardLock(date){if(ME&&ME.role==='booker'&&date&&this.lockedOn(ME.id,date)){toast('Is date ('+fmtDate(date)+') ka Day End ho chuka hai — naya order, edit ya delete nahi ho sakta.',true);return false}return true},
+  async queue(iv){
+    const old=this.map.get(iv.id);
+    const o={uuid:iv.id,bookerId:iv.bookerId,bookerName:iv.bookerName,date:iv.date,no:iv.no,shopId:iv.shopId,shopName:iv.shopName,route:iv.route||'',payType:iv.payType,net:N(iv.net),itemCount:iv.items.length,createdAtMs:old?old.createdAtMs:Date.now(),updatedAtMs:Date.now(),status:'pending',payload:JSON.stringify(iv)};
+    this.map.set(o.uuid,o);NetBar.update();
+    try{await ODB.put('orders',o)}catch(e){console.error(e);toast('Order phone ki storage mein save nahi hua: '+e.message,true);return}
+    this.upload(o.uuid)},                    // background: foran koshish, kisi ko block nahi karta
+  async upload(id){
+    const o=this.map.get(id);if(!o||o.status==='synced')return{ok:true};
+    if(!FS.ok)return{ok:false,reason:'config'};
+    if(navigator.onLine===false){Net.set(false);return{ok:false,reason:'offline'}}
+    try{
+      await withTimeout(OSYNC.TIMEOUT,sig=>FS.putOrder(o,sig));Net.set(true);
+      const cur=this.map.get(id);
+      if(cur&&cur.updatedAtMs===o.updatedAtMs){cur.status='synced';cur.syncedAtMs=Date.now();delete cur.lastError;await ODB.put('orders',cur)}   // upload ke dauran edit hua ho to pending hi rehta hai
+      NetBar.update();return{ok:true}}
+    catch(e){Net.set(!e.net);o.lastError=e.message;NetBar.update();return{ok:false,reason:e.net?'net':'server',msg:e.message}}},
+  async syncAll(){
+    if(this.syncing)return null;this.syncing=true;NetBar.update();
+    const res={ok:0,fail:0,errors:[],dayEnds:0,net:false};
+    try{
+      if(!FS.ok){res.notConfigured=true;return res}
+      const list=this.mine().filter(o=>o.status==='pending');let i=0,stop=false;
+      const worker=async()=>{while(!stop&&i<list.length){const o=list[i++];const r=await this.upload(o.uuid);if(r.ok)res.ok++;else{res.fail++;if(r.msg)res.errors.push(r.msg);if(r.reason==='net'||r.reason==='offline'){stop=true;res.net=true}}}};
+      await Promise.all([worker(),worker(),worker()]);
+      res.fail+=list.length-i;                // net toot gaya to jo try hi nahi hue woh bhi failed
+      if(!res.net)await this.syncDays(res);
+    }finally{this.syncing=false;res.at=Date.now();this.last=res;NetBar.update()}
+    return res},
+  async syncDays(res){
+    for(const d of Array.from(this.days.values()).filter(x=>x.bookerId===ME.id&&!x.synced)){
+      try{await withTimeout(OSYNC.TIMEOUT,sig=>FS.putDayEnd(d,sig));d.synced=true;await ODB.put('dayends',d);res.dayEnds++}
+      catch(e){res.dayFail=(res.dayFail||0)+1;if(e.net){res.net=true;return}}}
+    try{                                      // doosre phone se hua Day End ya saaf hui storage: server se lock wapas
+      const rem=await withTimeout(OSYNC.TIMEOUT,sig=>FS.dayEnds(ME.id,sig));
+      for(const d of rem)if(!this.days.has(d.key)){const rec={...d,synced:true,fromServer:true};this.days.set(rec.key,rec);await ODB.put('dayends',rec);res.restored=(res.restored||0)+1}
+    }catch(e){}},
+  async closeDay(date){
+    const mine=this.mine(date);
+    const rec={key:ME.id+'_'+date,bookerId:ME.id,bookerName:ME.name||ME.username,date,closedAtMs:Date.now(),orderCount:mine.length,total:r2(sum(mine,o=>o.net)),synced:false};
+    this.days.set(rec.key,rec);await ODB.put('dayends',rec);        // pehle phone par lock
+    for(const o of mine){if(o.payload){o.payload='';await ODB.put('orders',o)}}   // Day End ke baad bhari payload ki zaroorat nahi
+    log('Sales','Booker day end',date,mine.length+' orders • '+money(rec.total));save(true);NetBar.update();
+    try{await withTimeout(OSYNC.TIMEOUT,sig=>FS.putDayEnd(rec,sig));rec.synced=true;await ODB.put('dayends',rec);Net.set(true)}catch(e){if(e.net)Net.set(false)}
+    NetBar.update();return rec}
+};
+const syncBadge=id=>{const o=Orders.map.get(id);return o?(o.status==='synced'?badge('Synced ✓','ok'):badge('Pending ⏳','warn')):badge('Local','')};
+
+/* upar ki status bar: Online / Offline + Sync button (booker) */
+const NetBar={
+  update(fromRender){
+    const b=$('#netBar');if(!b)return;
+    if(!ME){b.classList.remove('on');document.body.classList.remove('has-netbar');return}
+    const isB=ME.role==='booker',n=Orders.pendingN(),up=Net.up;
+    b.className='netbar on'+(up?'':' bad');document.body.classList.add('has-netbar');
+    const more=isB&&up&&n?`<span class="nb-more">• ${n} orders pending</span>`:'';
+    b.innerHTML=`<span class="dot"></span><b>${up?'Online':'Offline'+(isB?' — '+n+' orders pending':'')}</b>${more}<span class="sp"></span>`+
+      (isB?`<button type="button" class="nb-btn" id="nbSync"${Orders.syncing?' disabled':''}>${Orders.syncing?'⏳ Sync ho raha hai…':'🔄 Sync'}</button>`:'');
+    const s=$('#nbSync');if(s)s.onclick=syncUI;
+    if(!fromRender&&CUR==='orderSync'){clearTimeout(NetBar._r);NetBar._r=setTimeout(()=>{if(CUR==='orderSync'&&!$('#modalBg').classList.contains('on'))render()},80)}}
+};
+async function syncUI(){
+  if(Orders.syncing)return;
+  const p=Orders.syncAll();if(CUR==='orderSync')render();
+  const r=await p;if(!r)return;
+  if(r.notConfigured)toast('Firebase abhi configure nahi hai. Admin se "Order sync settings" mein config save karwayein.',true);
+  else{let m=`${r.ok} orders synced, ${r.fail} failed`;if(r.dayEnds)m+=` • ${r.dayEnds} Day End upload hua`;if(r.net)m+=' — internet nahi hai ya bohat slow hai';else if(r.fail&&r.errors[0])m+=' — '+r.errors[0];toast(m,r.fail>0)}
+  if(CUR==='orderSync'||CUR==='invoices')render();
+}
+
+/* admin ke liye live (real-time) orders: Firestore SDK sirf parhne ke liye */
+const Live={orders:[],days:[],state:'off',err:'',cache:false,subs:[],_p:null,
+  refresh(){if(CUR==='liveOrders')drawLive()},
+  async start(){
+    if(!FS.ok||this.subs.length||this._p)return;this.state='connecting';
+    this._p=(async()=>{
+      try{
+        for(const f of['firebase-app.js','firebase-auth.js','firebase-firestore.js'])await loadScript(OSYNC.SDK+f);
+        const app=firebase.apps.find(a=>a.name==='nexaflow-orders')||firebase.initializeApp(FS.cfg,'nexaflow-orders');
+        try{await app.auth().signInAnonymously()}catch(e){}
+        const db=app.firestore();
+        const bad=e=>{this.state='error';this.err=e.message;this.refresh()};
+        this.subs.push(db.collection('orders').orderBy('createdAtMs','desc').limit(1000).onSnapshot(s=>{this.orders=s.docs.map(d=>d.data());this.cache=!!(s.metadata&&s.metadata.fromCache);this.state='live';this.err='';this.refresh()},bad));
+        this.subs.push(db.collection('dayEnds').orderBy('closedAtMs','desc').limit(1000).onSnapshot(s=>{this.days=s.docs.map(d=>d.data());this.refresh()},bad));
+      }catch(e){this.state='error';this.err=e.message;this.refresh()}
+      finally{this._p=null}})()},
+  stop(){this.subs.forEach(u=>{try{u()}catch(e){}});this.subs=[];this.state='off'}
+};
+
+/* ---------- BOOKER: Sync & Day End screen ---------- */
+let ORD_DATE=null;
+VIEWS.orderSync=el=>{
+  const date=ORD_DATE||(ORD_DATE=today());const locked=Orders.lockedOn(ME.id,date),dayRec=Orders.days.get(ME.id+'_'+date);
+  const list=Orders.mine(date),pend=list.filter(o=>o.status==='pending').length,allPend=Orders.pendingN();
+  const last=Orders.last;const days=Array.from(Orders.days.values()).filter(d=>d.bookerId===ME.id).sort((a,b)=>b.date.localeCompare(a.date));
+  const lastTxt=last?`Aakhri Sync (${clockOf(last.at)}): <b>${last.notConfigured?'Firebase configure nahi hai':`${last.ok} orders synced, ${last.fail} failed`}</b>${last.net?' — internet nahi hai ya bohat slow hai':''}`:'Abhi tak Sync nahi hua.';
+  el.innerHTML=`<div class="card"><h3>Sync<span class="sp"></span><button class="btn pri" id="osSync" ${Orders.syncing?'disabled':''}>${Orders.syncing?'⏳ Sync ho raha hai…':'🔄 Sync'}</button></h3>
+    <div class="row">${Net.up?badge('Online','ok'):badge('Offline','bad')}${allPend?badge(allPend+' orders pending','warn'):badge('Sab orders synced ✓','ok')}</div>
+    <p class="small muted mt">${lastTxt}</p>
+    <p class="small muted">Internet wapas aane par orders khud upload nahi hote — Sync button dabayein. Sirf pending orders upload hote hain, synced orders phone se delete nahi hote.</p>
+    <p class="small muted">${Orders.persisted===true?'🔒 Storage hifazat mein hai (browser data khud saaf nahi karega).':Orders.persisted===false?'⚠️ Browser ne storage ko permanent nahi kiya — browser data clear na karein aur Day End se pehle Sync zaroor karein.':''}</p></div>
+   <div class="card"><h3>Orders<span class="sp"></span>${inp('osDate',date,'date','style="width:auto"')}</h3>
+    ${locked?`<div class="note" style="border-color:var(--bad)">🔒 <b>${fmtDate(date)}</b> ka Day End ho chuka hai${dayRec?' ('+clockOf(dayRec.closedAtMs)+')':''}. Yeh date ab sirf dekhne ke liye hai — naya order, edit ya delete nahi ho sakta.${dayRec&&!dayRec.synced?' <br><span class="small">Day End abhi online save nahi hua — Sync dabayein.</span>':''}</div>`:''}
+    ${table([{t:'Time'},{t:'Order #'},{t:'Shop'},{t:'Items',n:1},{t:'Net',n:1},{t:'Status'}],list.map(o=>[clockOf(o.createdAtMs),esc(o.no),esc(o.shopName),o.itemCount,fmt(o.net),o.status==='synced'?badge('Synced ✓','ok'):badge('Pending ⏳','warn')]),list.length?['',list.length+' orders','','',fmt(sum(list,o=>o.net)),pend?pend+' pending':'']:null)}
+    ${locked?'':`<div class="row end mt"><button class="btn pri" id="osDayEnd">🏁 Day End (${fmtDate(date)})</button></div>`}</div>
+   <div class="card"><h3>Day End history</h3>${table([{t:'Date'},{t:'Band hua'},{t:'Orders',n:1},{t:'Total',n:1},{t:'Online'},{t:''}],days.map(d=>[fmtDate(d.date),clockOf(d.closedAtMs),d.orderCount,fmt(d.total),d.synced?badge('Save ✓','ok'):badge('Pending ⏳','warn'),`<button class="btn sm" data-vd="${d.date}">👁 Dekhein</button>`]))}</div>`;
+  $('#osSync').onclick=syncUI;
+  $('#osDate').onchange=()=>{ORD_DATE=V('osDate')||today();render()};
+  $$('[data-vd]').forEach(b=>b.onclick=()=>{ORD_DATE=b.dataset.vd;render();window.scrollTo(0,0)});
+  if($('#osDayEnd'))$('#osDayEnd').onclick=()=>askDayEnd(date);
+};
+function askDayEnd(date){
+  if(date>today())return toast('Aane wali date ka Day End nahi ho sakta.',true);
+  if(Orders.lockedOn(ME.id,date))return toast('Is date ka Day End pehle hi ho chuka hai.',true);
+  const p=Orders.pendingN(date);
+  if(p){modal('Day End nahi ho sakta',`<p><b>Pehle Sync karein — ${p} orders pending hain</b></p><p class="small muted">Day End tab hi hota hai jab is date ke saare orders online save (synced) ho chuke hon.</p>`,[{t:'🔄 Sync karein',pri:1,fn:()=>{closeModal();syncUI()}}]);return}
+  const l=Orders.mine(date);
+  modal('Day End ki tasdeeq',`<p>Kya aap <b>${fmtDate(date)}</b> ka Day End karna chahte hain?</p><p>${l.length} orders • ${money(sum(l,o=>o.net))}</p><p class="small muted">Day End ke baad is date par naya order, edit ya delete nahi ho sakega. Yeh date sirf dekhi ja sakegi. Yeh kaam wapas nahi hota.</p>`,
+    [{t:'Haan, Day End karein',bad:1,fn:async()=>{closeModal();if(Orders.pendingN(date))return askDayEnd(date);const r=await Orders.closeDay(date);toast(r.synced?fmtDate(date)+' ka Day End ho gaya aur online save bhi ho gaya.':fmtDate(date)+' ka Day End ho gaya. Online save ke liye Sync dabayein.',!r.synced);render()}}]);
+}
+
+/* ---------- ADMIN: live booker orders ---------- */
+let LV={date:'',booker:'',q:''};
+function drawLive(){
+  const o=$('#lvOut');if(!o)return;
+  const q=LV.q.toLowerCase();let l=Live.orders.filter(x=>(!LV.date||x.date===LV.date)&&(!LV.booker||x.bookerId===LV.booker)&&(!q||[x.no,x.shopName,x.bookerName].join(' ').toLowerCase().includes(q)));
+  const st=$('#lvState');if(st)st.innerHTML=Live.state==='live'?badge(Live.cache?'Offline (purana data)':'🟢 Live',Live.cache?'warn':'ok'):Live.state==='error'?badge('Error: '+Live.err,'bad'):badge('Connect ho raha hai…','warn');
+  o.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Order #'},{t:'Shop'},{t:'Items',n:1},{t:'Net',n:1},{t:'Synced'},{t:''}],l.map(x=>[fmtDate(x.date),esc(x.bookerName),esc(x.no),esc(x.shopName),x.itemCount,fmt(x.net),clockOf(x.syncedAtMs),x.payload?`<button class="btn sm" data-lv="${esc(x.uuid)}">👁</button>`:'']),l.length?['',l.length+' orders','','','',fmt(sum(l,x=>x.net)),'','']:null);
+  $$('#lvOut [data-lv]').forEach(b=>b.onclick=()=>{const x=Live.orders.find(z=>z.uuid===b.dataset.lv);let iv={};try{iv=JSON.parse(x.payload)}catch(e){}
+    modal('Order '+x.no,`<p><b>${esc(x.shopName)}</b> • ${esc(x.bookerName)} • ${fmtDate(x.date)}</p>${table([{t:'Item'},{t:'Qty'},{t:'Rate',n:1},{t:'Total',n:1}],(iv.items||[]).map(i=>[esc(i.name),splitPcs({packing:i.packing},i.pcs),fmt(i.rate),fmt(i.gross-i.disc)]))}<p class="small muted">UUID: ${esc(x.uuid)}</p>`)});
+  const d=$('#lvDays');if(d)d.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Band hua'},{t:'Orders',n:1},{t:'Total',n:1}],Live.days.filter(x=>!LV.booker||x.bookerId===LV.booker).map(x=>[fmtDate(x.date),esc(x.bookerName),new Date(x.closedAtMs).toLocaleString(),x.orderCount,fmt(x.total)]));
+}
+VIEWS.liveOrders=el=>{
+  if(!FS.ok){el.innerHTML=`<div class="card"><h3>Booker orders (live)</h3><p>Firestore abhi configure nahi hai. Pehle <b>Order sync settings</b> mein Firebase config save karein.</p><div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div></div>`;return}
+  const bk=DB.users.filter(u=>u.role==='booker');
+  el.innerHTML=`<div class="card"><h3>Booker orders (live)<span class="sp"></span><span id="lvState"></span></h3>
+    <div class="grid">${F('Date',inp('lvD',LV.date,'date'))}${F('Booker',sel('lvB',bk.map(u=>({v:u.id,t:u.name||u.username})),LV.booker,'Sab bookers'))}${F('Search',inp('lvQ',LV.q,'search','placeholder="Shop, order #"'))}</div>
+    <div class="mt" id="lvOut"></div></div>
+   <div class="card"><h3>Booker Day End (kis ne kaunsa din band kiya)</h3><div id="lvDays"></div></div>`;
+  $('#lvD').oninput=()=>{LV.date=V('lvD');drawLive()};$('#lvB').onchange=()=>{LV.booker=V('lvB');drawLive()};$('#lvQ').oninput=()=>{LV.q=V('lvQ');drawLive()};
+  drawLive();Live.start();
+};
+
+/* ---------- ADMIN / DEVELOPER: Firestore settings ---------- */
+const FS_RULES=`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function closed(b, d) { return exists(/databases/$(database)/documents/dayEnds/$(b + '_' + d)); }
+    function okOrder(o, id) {
+      return o.uuid == id && o.bookerId is string && o.date is string
+        && o.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && o.net is number;
+    }
+    // Orders: Day End ho chuki date par koi write nahi (booker ke liye)
+    match /orders/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && okOrder(request.resource.data, id)
+                    && !closed(request.resource.data.bookerId, request.resource.data.date);
+      allow update: if signedIn() && okOrder(request.resource.data, id)
+                    && request.resource.data.bookerId == resource.data.bookerId
+                    && !closed(resource.data.bookerId, resource.data.date)
+                    && !closed(request.resource.data.bookerId, request.resource.data.date);
+      allow delete: if false;
+    }
+    // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
+    match /dayEnds/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.bookerId is string && request.resource.data.date is string
+                    && id == request.resource.data.bookerId + '_' + request.resource.data.date;
+      allow update, delete: if false;
+    }
+  }
+}`;
+VIEWS.fsSettings=el=>{
+  const raw=FS.cfg?(JSON.stringify(FS.cfg,null,2)):'';
+  el.innerHTML=`<div class="card"><h3>Order sync settings (Firebase Firestore)</h3>
+    <p class="muted">Yeh setting is phone / computer par <b>ek baar</b> save hoti hai (admin ya developer is device par login karke). Jab tak config save nahi, app poori tarah offline chalti hai aur orders pending rehte hain.</p>
+    <p>Abhi: ${FS.ok?badge('Configured: '+esc(FS.cfg.projectId),'ok'):badge('Configure nahi hai','warn')}</p>
+    <div class="f"><label>Firebase config (console → Project settings → Your apps → firebaseConfig)</label><textarea id="fsCfg" rows="9" style="font-family:monospace;width:100%" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'>${esc(raw)}</textarea></div>
+    <p class="msg small" id="fsMsg"></p>
+    <div class="row mt"><button class="btn pri" id="fsSave">💾 Save</button><button class="btn" id="fsTest">🔌 Connection test</button><button class="btn bad" id="fsClear">Hata dein</button></div></div>
+   <div class="card"><h3>Firebase par ek baar ka setup</h3>
+    <ol class="small"><li>Firebase console mein project banayein → <b>Build → Firestore Database → Create database</b>.</li>
+    <li><b>Build → Authentication → Sign-in method → Anonymous</b> ko enable karein (rules ke liye).</li>
+    <li>Firestore <b>Rules</b> tab mein neeche wale rules paste karke <b>Publish</b> karein (repo mein <code>firestore.rules</code> file bhi hai).</li></ol>
+    <div class="row"><button class="btn sm" id="fsCopy">📋 Rules copy karein</button></div><pre class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;margin-top:8px">${esc(FS_RULES)}</pre></div>`;
+  const msg=(t,k)=>{const m=$('#fsMsg');m.textContent=t;m.className='msg small '+(k||'')};
+  $('#fsSave').onclick=async()=>{try{await Orders.init();const c=await FS.save($('#fsCfg').value);Net.probe();toast('Firebase config save ho gaya.');render();msg('Save ho gaya: '+c.projectId,'ok')}catch(e){msg(e.message,'err');toast(e.message,true)}};
+  $('#fsTest').onclick=async()=>{if(!FS.ok)return msg('Pehle config save karein.','err');msg('Test ho raha hai…');try{await withTimeout(OSYNC.TIMEOUT,s=>FS.test(s));msg('Connection theek hai ✓','ok')}catch(e){msg('Connection fail: '+e.message+(e.http===403?' — Rules / Anonymous sign-in check karein.':''),'err')}};
+  $('#fsClear').onclick=()=>confirmBox('Is device ka Firebase config hata dein? Pending orders phone mein safe rahenge.',async()=>{await FS.clear();Live.stop();render();toast('Config hata diya.')});
+  $('#fsCopy').onclick=()=>{try{navigator.clipboard.writeText(FS_RULES);toast('Rules copy ho gaye.')}catch(e){toast('Copy nahi hua, khud select karein.',true)}};
 };
 
 /* ---------- DELIVERY DATES ---------- */
