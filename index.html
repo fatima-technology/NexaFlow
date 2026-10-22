@@ -193,8 +193,6 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:color-mix(in srgb,var(--accent)
   body.drawer .side{transform:none;box-shadow:0 0 50px rgba(0,0,0,.4)}
   body.drawer .scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:65}
   .top{height:auto;min-height:var(--top-h);padding:0 12px;padding-top:env(safe-area-inset-top);background:var(--side);color:var(--side-head);border:0}
-  body.has-netbar .netbar{height:auto;min-height:calc(34px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
-  body.has-netbar .top{padding-top:0;top:calc(34px + env(safe-area-inset-top))}
   .top .menu-btn{display:grid;place-items:center;width:40px;height:40px;border:0;background:color-mix(in srgb,var(--side-head) 10%,transparent);color:var(--side-head);border-radius:10px;font-size:20px}
   .top h2{font-size:16.5px}
   .top .chip{background:color-mix(in srgb,var(--side-head) 10%,transparent);border-color:transparent;color:var(--side-head);padding:5px 9px}
@@ -659,14 +657,14 @@ body.mode-night #login .lg-mini-d span{background:#DCE8EE}body.mode-night #login
 @media(max-width:900px){#login .login-art{display:none!important}.lg-mbrand{display:flex}#login .login-card{justify-content:flex-start;padding:28px 24px 32px;min-height:100vh}}
 @media(min-width:901px) and (max-height:720px){#login .login-card input{height:44px;min-height:44px;font-size:16px}#login .login-card .btn.pri{height:46px;min-height:46px}#login .login-card h1{font-size:26px}#login .login-card p.sub{font-size:15px}.lg-chips{display:none}}
 
-/* Offline-first orders: status bar */
-.netbar{display:none;position:sticky;top:0;z-index:30;height:34px;align-items:center;gap:10px;padding:0 16px;font-size:13px;font-weight:600;color:#fff;background:#15803d;white-space:nowrap;overflow:hidden}
-.netbar.on{display:flex}.netbar.bad{background:#b42318}
-.netbar .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
-.netbar b{overflow:hidden;text-overflow:ellipsis}.netbar .sp{flex:1}.netbar .nb-more{font-weight:500;opacity:.92}
-.netbar .nb-btn{flex:0 0 auto;border:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer;clip-path:none}
-.netbar .nb-btn:disabled{opacity:.7;cursor:progress}
-body.has-netbar .top{top:34px}
+/* Offline-first orders: status bar (transparent, slim) */
+.netbar{display:none;position:sticky;top:0;z-index:30;height:26px;align-items:center;gap:8px;padding:0 14px;font-size:12px;font-weight:600;color:var(--ok);background:transparent;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);white-space:nowrap;overflow:hidden}
+.netbar.on{display:flex}.netbar.bad{color:var(--bad)}
+.netbar .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 22%,transparent)}
+.netbar b{overflow:hidden;text-overflow:ellipsis}.netbar .sp{flex:1}.netbar .nb-more{font-weight:500;opacity:.9}
+.netbar .nb-btn{flex:0 0 auto;border:1px solid currentColor;background:transparent;color:inherit;border-radius:8px;padding:1px 10px;font:inherit;font-weight:700;cursor:pointer;clip-path:none}
+.netbar .nb-btn:disabled{opacity:.6;cursor:progress}
+body.has-netbar .top{top:26px}
 </style>
 </head>
 <body>
@@ -2858,6 +2856,7 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   document.addEventListener('touchcancel',function(){tracking=false;},{passive:true});
 })();
 
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('Offline cache off:',e)));
 </script>
 </body>
 </html>
