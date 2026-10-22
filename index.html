@@ -1604,7 +1604,7 @@ const dateRange=(p,from,to)=>F('From',inp(p+'From',from||thisMonth()+'-01','date
 /* =====================================================================
    DASHBOARD
    ===================================================================== */
-const LIVE_STRIP=()=>{LIVE_AT=new Date();return`<div class="live"><b>Live</b><span>Figures refresh automatically • last updated ${timeText(LIVE_AT,true)}</span></div>`};
+const LIVE_STRIP=()=>{LIVE_AT=new Date();return`<div class="live"><span>Figures refresh automatically • last updated ${timeText(LIVE_AT,true)}</span></div>`};
 VIEWS.dashboard=el=>{VIEWS._dash(el);el.insertAdjacentHTML('afterbegin',LIVE_STRIP())};
 VIEWS._dash=el=>{
   const t=today();
