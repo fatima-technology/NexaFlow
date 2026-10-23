@@ -2595,9 +2595,10 @@ Object.entries(REPORTS).forEach(([key, report])=>{
 });
 let RP_CUR='daily';
 VIEWS.reports=el=>{
-  el.innerHTML=`<div class="reports-layout"><aside class="reports-list" aria-label="Reports list"><div class="reports-list-title">Reports</div>${Object.entries(REPORTS).map(([k,r],i)=>`<button data-rp="${k}" class="reports-choice ${i===0?'on':''}">${esc(r.t)}</button>`).join('')}</aside><div class="reports-content"><div id="rpO"></div></div></div>`;
-  const show=k=>{RP_CUR=k;$$('[data-rp]').forEach(b=>b.classList.toggle('on',b.dataset.rp===k));$$('#nav [data-rp-go]').forEach(b=>b.classList.toggle('on',b.dataset.rpGo===k));const r=REPORTS[k];reportBlock($('#rpO'),{title:r.t,printType:'report_'+k,filters:r.f?r.f():'',build:r.b,after:r.a})};
-  $$('[data-rp]').forEach(b=>b.onclick=()=>show(b.dataset.rp));show(REPORTS[RP_CUR]?RP_CUR:'daily');
+  /* the list of reports lives in the menu (Reports group); the page only shows the chosen report */
+  el.innerHTML=`<div class="reports-content"><div id="rpO"></div></div>`;
+  const show=k=>{RP_CUR=k;$$('#nav [data-rp-go]').forEach(b=>b.classList.toggle('on',b.dataset.rpGo===k));const r=REPORTS[k];reportBlock($('#rpO'),{title:r.t,printType:'report_'+k,filters:r.f?r.f():'',build:r.b,after:r.a})};
+  show(REPORTS[RP_CUR]?RP_CUR:'daily');
 };
 /* =====================================================================
    STORE MANAGER STOCK MOVEMENT REPORTS
