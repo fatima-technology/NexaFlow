@@ -283,6 +283,9 @@ function lastClosed(){return DB.dayEnds.reduce((m,d)=>d.date>m?d.date:m,'')}
 function isLocked(date){const c=lastClosed();return !!c&&!!date&&String(date).slice(0,10)<=c&&!isDev()}
 function guard(...dates){if(dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. New entries can only be made after this date.',true);return false}return true}
 
+/* edit/delete of an entry on a closed date: admin only */
+function guardEdit(...dates){if(!isAdmin()&&dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. Only admin can edit or delete entries on or before this date.',true);return false}return true}
+
 /* ---------- UI primitives ---------- */
 function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='on'+(bad?' bad':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2800)}
 function modal(title,html,buttons){
@@ -889,7 +892,7 @@ VIEWS.pos=el=>{
   };
   const saveInv=print=>{
     if(!ed&&invLimitReached())return showBuyDialog();
-    const shop=byId('shops',V('pShop'));if(!shop)return toast('Select a shop.',true);if(!ed&&!guard(V('pDate')))return;if(!POS.items.length)return toast('Add at least one item.',true);
+    const shop=byId('shops',V('pShop'));if(!shop)return toast('Select a shop.',true);if(!(ed?guardEdit(V('pDate'),ed.date):guard(V('pDate'))))return;if(!POS.items.length)return toast('Add at least one item.',true);
     if(!V('pDate')||!V('pDel')||V('pDel')<V('pDate'))return toast('Enter valid order and delivery dates.',true);
     if(!byId('accounts',V('pAcc')||'acc_cash'))return toast('Select a valid cash account.',true);
     for(const it of POS.items){if(!byId('products',it.productId))return toast('A selected product no longer exists. Refresh the invoice.',true);const available=stockOf(it.productId,POS.editId)-sum(POS.items.filter(x=>x.productId===it.productId&&x!==it),x=>x.pcs);if(it.pcs>available&&!S().allowNegativeStock)return toast('Stock changed while preparing the invoice. Check '+it.name+' and try again.',true)}
@@ -931,8 +934,8 @@ VIEWS.invoices=el=>{
        `<div class="row"><button class="btn sm" data-pr="${i.id}">🖨️</button>${i.status!=='cancelled'&&(isAdmin()||ME.role==='kpo'||i.bookerId===ME.id)?`<button class="btn sm" data-ed="${i.id}">✏️</button>`:''}${isAdmin()?`<button class="btn sm bad" data-del="${i.id}">🗑️</button>`:''}</div>`]),
       ['',list.length+' invoices','','','','','',fmt(sum(list.filter(i=>i.status!=='cancelled'),i=>i.net)),fmt(sum(list,invDue)),'','']);
     $$('#ivOut [data-pr]').forEach(b=>b.onclick=()=>printInvoice(byId('invoices',b.dataset.pr)));
-    $$('#ivOut [data-ed]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.ed);if(invCollected(iv.id)>0&&!confirm('Cash has already been collected on this invoice. Edit anyway?'))return;POS={items:JSON.parse(JSON.stringify(iv.items)),editId:iv.id};go('pos')});
-    $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net));save();run();toast('Deleted.')})});
+    $$('#ivOut [data-ed]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.ed);if(!guardEdit(iv.date))return;if(invCollected(iv.id)>0&&!confirm('Cash has already been collected on this invoice. Edit anyway?'))return;POS={items:JSON.parse(JSON.stringify(iv.items)),editId:iv.id};go('pos')});
+    $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);if(!guardEdit(iv.date))return;confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net));save();run();toast('Deleted.')})});
   };
   ['ivFrom','ivTo','ivDT','ivQ','ivSt'].forEach(id=>$('#'+id).oninput=run);
   $('#ivPrintSel').onclick=()=>{const ids=$$('#ivOut [data-ck]:checked').map(c=>c.dataset.ck);if(!ids.length)return toast('Tick the invoices first.',true);printDoc('invoice',ids.map(id=>invoiceBody(byId('invoices',id))))};
@@ -1013,7 +1016,7 @@ VIEWS.returns=el=>{
   <div class="card"><h3>Returns record</h3>${table([{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'},{t:'Reason'},{t:''}],DB.returns.slice().reverse().slice(0,300).map(r=>[fmtDate(r.date),r.kind==='udhaar'?'Credit return':'Item return',esc(r.shopName),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash refund':'Balance minus',r.toStock?badge('In stock','ok'):badge('Damaged','warn'),esc(r.reason||''),`<button class="btn sm" data-prt="${r.id}">🖨️</button>${isAdmin()?` <button class="btn sm bad" data-drt="${r.id}">🗑️</button>`:''}`]))}</div>`;
   const form=k=>{$$('[data-rt]').forEach(b=>b.classList.toggle('on',b.dataset.rt===k));const f=$('#rtForm');
     if(k==='cancel'){f.innerHTML=`<h3>Full invoice cancel / return</h3><div class="grid">${F('Invoice',sel('rcInv',activeInv().slice().reverse().slice(0,500).map(i=>({v:i.id,t:i.no+' — '+i.shopName+' — '+fmt(i.net)})),'','Select'),'wide')}${F('Reason',inp('rcWhy'),'wide')}</div><p class="note mt">Cancelling returns all goods to stock and reduces the shop balance. The record is kept safe.</p><div class="row mt"><button class="btn pri bad" id="rcGo">Cancel invoice</button></div>`;
-      $('#rcGo').onclick=()=>{const iv=byId('invoices',V('rcInv'));if(!iv)return toast('Select an invoice.',true);if(!V('rcWhy'))return toast('Enter a reason.',true);if(invCollected(iv.id)>0&&!confirm('The supply man has already collected cash on this invoice; that record will stay. Cancel the invoice?'))return;
+      $('#rcGo').onclick=()=>{const iv=byId('invoices',V('rcInv'));if(!iv)return toast('Select an invoice.',true);if(!V('rcWhy'))return toast('Enter a reason.',true);if(!guardEdit(iv.date))return;if(invCollected(iv.id)>0&&!confirm('The supply man has already collected cash on this invoice; that record will stay. Cancel the invoice?'))return;
         iv.status='cancelled';iv.cancelReason=V('rcWhy');iv.cancelledBy=ME.username;iv.cancelledAt=nowStamp();log('Returns','Invoice cancelled',iv.no,V('rcWhy'));save();toast('Invoice cancelled.');render()};return}
     f.innerHTML=`<h3>${k==='udhaar'?'Stock returned against credit':'Item return'}</h3><div class="grid">
       ${F('Date',inp('rDate',today(),'date'))}${F('Shop',sel('rShop',shops.map(s=>({v:s.id,t:s.name})),'','Select'),'full-m')}
@@ -1030,7 +1033,7 @@ VIEWS.returns=el=>{
   };
   $$('[data-rt]').forEach(b=>b.onclick=()=>form(b.dataset.rt));form('item');
   $$('[data-prt]').forEach(b=>b.onclick=()=>{const r=byId('returns',b.dataset.prt);printDoc('returnSlip',`<div class="meta"><div><b>Date:</b> ${fmtDate(r.date)}</div><div><b>Shop:</b> ${esc(r.shopName)}</div></div>${tableHTMLPrint([{t:'Product'},{t:'Pcs',n:1},{t:'Rate',n:1},{t:'Amount',n:1}],[[r.productName,r.pcs,fmt(r.rate),fmt(r.amount)]])}<p><b>Settlement:</b> ${r.settle==='cash'?'Cash refund':'Adjusted in balance'} • <b>Reason:</b> ${esc(r.reason)}</p>`)});
-  $$('[data-drt]').forEach(b=>b.onclick=()=>confirmBox('Delete this return record?',()=>{DB.returns=DB.returns.filter(r=>r.id!==b.dataset.drt);log('Returns','Return deleted',b.dataset.drt);save();render()}));
+  $$('[data-drt]').forEach(b=>b.onclick=()=>guardEdit((byId('returns',b.dataset.drt)||{}).date)&&confirmBox('Delete this return record?',()=>{DB.returns=DB.returns.filter(r=>r.id!==b.dataset.drt);log('Returns','Return deleted',b.dataset.drt);save();render()}));
 };
 
 /* ---------- COMPANY CLAIMS ---------- */
@@ -1048,7 +1051,7 @@ VIEWS.claims=el=>{
     DB.claims.push(c);log('Claims','Claim created',c.no,money(c.amount));save();toast('Claim '+c.no+' saved.');render()};
   $$('[data-pc]').forEach(b=>b.onclick=()=>{const c=byId('claims',b.dataset.pc);printDoc('claim',`<div class="meta"><div><b>Claim #:</b> ${esc(c.no)}</div><div><b>Date:</b> ${fmtDate(c.date)}</div><div><b>To:</b> ${esc(c.supplier)}</div><div><b>Type:</b> ${esc(c.type)}</div></div>${tableHTMLPrint([{t:'Product'},{t:'Pcs',n:1},{t:'Rate',n:1},{t:'Amount',n:1}],[[c.productName,c.pcs,fmt(c.rate),fmt(c.amount)]])}<p><b>Reason:</b> ${esc(c.reason)}</p>`)});
   $$('[data-rc]').forEach(b=>b.onclick=()=>{const c=byId('claims',b.dataset.rc);modal('Claim received: '+c.no,`<div class="grid">${F('Received amount',inp('crAmt',c.amount,'number'))}${F('Date',inp('crDate',today(),'date'))}${F('Account',sel('crAcc',accOptions(),'acc_cash'))}</div>`,[{t:'Save',pri:1,fn:()=>{if(!guard(V('crDate')))return;c.status='received';c.receivedAmount=N(V('crAmt'));c.receivedDate=V('crDate');c.accountId=V('crAcc');log('Claims','Claim received',c.no,money(c.receivedAmount));save();closeModal();render()}}])});
-  $$('[data-dc]').forEach(b=>b.onclick=()=>confirmBox('Delete this claim?',()=>{DB.claims=DB.claims.filter(c=>c.id!==b.dataset.dc);save();render()}));
+  $$('[data-dc]').forEach(b=>b.onclick=()=>guardEdit((byId('claims',b.dataset.dc)||{}).date)&&confirmBox('Delete this claim?',()=>{DB.claims=DB.claims.filter(c=>c.id!==b.dataset.dc);save();render()}));
 };
 /* =====================================================================
    PURCHASE
@@ -1084,7 +1087,7 @@ VIEWS.purchase=el=>{
     const f=$('#puImg').files[0];if(f)p.image=await readImage(f,160,.75);
     PUR.items.push(purItemFrom(p,V('puCtn'),V('puPcs'),N(V('puCost'))));['puProd','puBrand','puPack','puCtn','puPcs','puCost','puTP','puRP','puImg'].forEach(i=>$('#'+i).value='');draw()};
   $('#puImp').onclick=()=>openImport('purchaseItems',()=>{});
-  $('#puSave').onclick=async()=>{if(!V('puSup'))return toast('Enter the supplier name.',true);if(!ed&&!guard(V('puDate')))return;if(!PUR.items.length)return toast('Add products.',true);
+  $('#puSave').onclick=async()=>{if(!V('puSup'))return toast('Enter the supplier name.',true);if(!(ed?guardEdit(V('puDate'),ed.date):guard(V('puDate'))))return;if(!PUR.items.length)return toast('Add products.',true);
     if(PUR.items.some(i=>!byId('products',i.productId)||!Number.isInteger(N(i.pcs))||N(i.pcs)<=0||N(i.costCtn)<0||N(i.amount)<0))return toast('One or more purchase items have invalid product, quantity, or cost data.',true);const total=r2(sum(PUR.items,i=>i.amount));const paidNow=N(V('puPaid'));if(!Number.isFinite(total)||total<=0)return toast('Purchase total must be greater than zero.',true);if(paidNow<0||paidNow>total+0.001)return toast('Payment now must be between zero and the purchase total.',true);if(!byId('accounts',V('puAcc')||'acc_cash'))return toast('Select a valid payment account.',true);if(!V('puDate'))return toast('Enter the purchase date.',true);const f=$('#puAtt').files[0];
     const rec={date:V('puDate'),supplier:V('puSup'),ref:V('puRef'),category:V('puCat'),items:PUR.items,total,paidNow,accountId:V('puAcc')||'acc_cash'};
     if(f)rec.attachment=await readImage(f,1100,.7);else if(ed&&ed.attachment)rec.attachment=ed.attachment;
@@ -1103,8 +1106,8 @@ VIEWS.purchases=el=>{
     $('#plO').innerHTML=table([{t:'Purchase #'},{t:'Date'},{t:'Supplier'},{t:'Ref'},{t:'Items',n:1},{t:'Total',n:1},{t:'Paid',n:1},{t:'Due',n:1},{t:''}],l.map(p=>[esc(p.no),fmtDate(p.date),esc(p.supplier),esc(p.ref||''),p.items.length,fmt(p.total),fmt(p.paidNow),fmt(N(p.total)-N(p.paidNow)),`<div class="row"><button class="btn sm" data-pp="${p.id}">🖨️</button>${p.attachment?`<button class="btn sm" data-pa="${p.id}">📎</button>`:''}${isAdmin()?`<button class="btn sm" data-pe="${p.id}">✏️</button><button class="btn sm bad" data-pd="${p.id}">🗑️</button>`:''}</div>`]),['','',l.length+' invoices','','',fmt(sum(l,p=>p.total)),fmt(sum(l,p=>p.paidNow)),fmt(sum(l,p=>N(p.total)-N(p.paidNow))),'']);
     $$('[data-pp]').forEach(b=>b.onclick=()=>printDoc('purchase',purchaseBody(byId('purchases',b.dataset.pp))));
     $$('[data-pa]').forEach(b=>b.onclick=()=>modal('Invoice attachment',`<img src="${byId('purchases',b.dataset.pa).attachment}" style="max-width:100%">`));
-    $$('[data-pe]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pe);PUR={items:JSON.parse(JSON.stringify(p.items)),editId:p.id};go('purchase')});
-    $$('[data-pd]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pd);confirmBox(`Delete purchase ${p.no}? Its stock will also be deducted.`,()=>{DB.purchases=DB.purchases.filter(x=>x.id!==p.id);log('Purchase','Purchase deleted',p.no,money(p.total));save();run()})});
+    $$('[data-pe]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pe);if(!guardEdit(p.date))return;PUR={items:JSON.parse(JSON.stringify(p.items)),editId:p.id};go('purchase')});
+    $$('[data-pd]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pd);if(!guardEdit(p.date))return;confirmBox(`Delete purchase ${p.no}? Its stock will also be deducted.`,()=>{DB.purchases=DB.purchases.filter(x=>x.id!==p.id);log('Purchase','Purchase deleted',p.no,money(p.total));save();run()})});
   };['plFrom','plTo','plQ'].forEach(i=>$('#'+i).oninput=run);run();
 };
 VIEWS.suppliers=el=>{
@@ -1113,7 +1116,7 @@ VIEWS.suppliers=el=>{
    <div class="card"><h3>Supplier dues</h3>${table([{t:'Supplier'},{t:'Purchases',n:1},{t:'Paid',n:1},{t:'Due',n:1}],sup.map(s=>{const pur=sum(DB.purchases.filter(p=>p.supplier===s),p=>p.total);return[esc(s),fmt(pur),fmt(pur-supplierDue(s)),fmt(supplierDue(s))]}),['Total',fmt(sum(DB.purchases,p=>p.total)),'',fmt(sum(sup,supplierDue))])}</div>
    <div class="card"><h3>Payments history</h3>${table([{t:'Date'},{t:'Supplier'},{t:'Amount',n:1},{t:'Account'},{t:'Note'},{t:''}],DB.supplierPayments.slice().reverse().map(p=>[fmtDate(p.date),esc(p.supplier),fmt(p.amount),esc((byId('accounts',p.accountId)||{}).name||''),esc(p.note||''),isAdmin()?`<button class="btn sm bad" data-dsp="${p.id}">🗑️</button>`:'']))}</div>`;
   $('#spGo').onclick=()=>{if(!V('spSup')||N(V('spAmt'))<=0)return toast('Enter supplier and amount.',true);if(!guard(V('spDate')))return;DB.supplierPayments.push({id:uid(),date:V('spDate'),supplier:V('spSup'),amount:N(V('spAmt')),accountId:V('spAcc'),note:V('spNote'),by:ME.username});log('Purchase','Supplier payment',V('spSup'),money(V('spAmt')));save();toast('Payment saved.');render()};
-  $$('[data-dsp]').forEach(b=>b.onclick=()=>confirmBox('Delete this payment?',()=>{DB.supplierPayments=DB.supplierPayments.filter(x=>x.id!==b.dataset.dsp);save();render()}));
+  $$('[data-dsp]').forEach(b=>b.onclick=()=>guardEdit((byId('supplierPayments',b.dataset.dsp)||{}).date)&&confirmBox('Delete this payment?',()=>{DB.supplierPayments=DB.supplierPayments.filter(x=>x.id!==b.dataset.dsp);save();render()}));
 };
 
 /* ---------- PRODUCTS & STOCK ---------- */
@@ -1178,7 +1181,7 @@ VIEWS.collection=el=>{
     const sm=byId('users',V('coSM'));if(!iv.supplymanId&&sm){iv.supplymanId=sm.id;iv.supplyman=sm.name||sm.username}
     DB.collections.push({id:uid(),date:V('coDate'),invoiceId:iv.id,invoiceNo:iv.no,shopId:iv.shopId,shopName:iv.shopName,smId:V('coSM'),supplyman:sm?sm.name||sm.username:'',bill:invDue(iv),amount:a,accountId:V('coAcc'),remarks:V('coNote'),by:ME.username});
     iv.deliveredAt=nowStamp();log('Recovery','Supply collection',iv.no,money(a));save();toast('Saved. Remaining '+money(invDue(iv))+' on credit.');render()};
-  $$('[data-dco]').forEach(b=>b.onclick=()=>confirmBox('Delete this collection?',()=>{DB.collections=DB.collections.filter(c=>c.id!==b.dataset.dco);log('Recovery','Collection deleted',b.dataset.dco);save();render()}));
+  $$('[data-dco]').forEach(b=>b.onclick=()=>guardEdit((byId('collections',b.dataset.dco)||{}).date)&&confirmBox('Delete this collection?',()=>{DB.collections=DB.collections.filter(c=>c.id!==b.dataset.dco);log('Recovery','Collection deleted',b.dataset.dco);save();render()}));
 };
 VIEWS.recovery=el=>{
   const shops=visibleShops();const staff=staffList();const coll=DB.users.filter(u=>['booker','supplyman','admin','kpo'].includes(u.role));
@@ -1205,7 +1208,7 @@ VIEWS.recovery=el=>{
       `<div class="row"><button class="btn sm" data-rpr="${r.id}">🖨️</button>${isAdmin()&&s==='pending'?`<button class="btn sm pri" data-rap="${r.id}">✅</button><button class="btn sm bad" data-rrj="${r.id}">✖</button>`:''}${isAdmin()?`<button class="btn sm bad" data-rdl="${r.id}">🗑️</button>`:''}</div>`]),['','','','','Total',fmt(sum(l,r=>r.amount)),fmt(sum(l,r=>r.short)),'','']);
     $$('[data-rap]').forEach(b=>b.onclick=()=>{approveRec(byId('recoveries',b.dataset.rap));save();render()});
     $$('[data-rrj]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rrj);r.status='rejected';r.rejectedBy=ME.username;log('Recovery','Rejected',r.shopName,money(r.amount));save();render()});
-    $$('[data-rdl]').forEach(b=>b.onclick=()=>{const rr=byId('recoveries',b.dataset.rdl)||{};return confirmBox('Delete this recovery record?',()=>{const r=byId('recoveries',b.dataset.rdl);DB.recoveries=DB.recoveries.filter(x=>x.id!==r.id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Deleted',r.shopName,money(r.amount));save();render()})});
+    $$('[data-rdl]').forEach(b=>b.onclick=()=>{const rr=byId('recoveries',b.dataset.rdl)||{};return guardEdit(rr.status==='approved'?rr.approvedDate||rr.date:'')&&confirmBox('Delete this recovery record?',()=>{const r=byId('recoveries',b.dataset.rdl);DB.recoveries=DB.recoveries.filter(x=>x.id!==r.id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Deleted',r.shopName,money(r.amount));save();render()})});
     $$('[data-rpr]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rpr);printDoc('recovery',`<div class="meta"><div><b>Date:</b> ${fmtDate(r.date)}</div><div><b>Status:</b> ${r.status}</div><div><b>Shop:</b> ${esc(r.shopName)}</div><div><b>Collector:</b> ${esc(r.collector)}</div></div><table class="kv"><tr><td>Amount received (${esc(r.method)})</td><td>${money(r.amount)}</td></tr>${r.short?`<tr><td>Short</td><td>${money(r.short)}</td></tr>`:''}<tr><td>Balance after</td><td>${money(shopDue(r.shopId))}</td></tr></table>${r.note?`<p>${esc(r.note)}</p>`:''}`)});
   };
   $$('[data-rs]').forEach(b=>b.onclick=()=>list(b.dataset.rs));list('pending');
@@ -1289,7 +1292,7 @@ function showLedger(shopId,tab){const sh=byId('shops',shopId);if(!sh)return;
     $('#lgEdit').innerHTML=`<div class="note"><b>Edit ${src==='col'?'supply man cash ('+esc(x.invoiceNo)+')':'recovery'}</b><div class="grid mt">${F('Date',inp('lgED',x.date,'date'))}${F('Amount',inp('lgEA',x.amount,'number','step="0.01" inputmode="decimal"'))}${src==='col'?'':F('Shop (change to move this recovery)',sel('lgES2',DB.shops.map(s=>({v:s.id,t:shopLabel(s)+' — due '+fmt(shopDue(s.id))})),x.shopId),'wide')}</div><div class="row mt"><button class="btn pri" id="lgES">💾 Save change</button><button class="btn" id="lgEC">Cancel</button></div></div>`;
     $('#lgEC').onclick=()=>$('#lgEdit').innerHTML='';
     $('#lgES').onclick=()=>{const nd=V('lgED'),na=r2(N(V('lgEA')));if(!nd)return toast('Enter a date.',true);if(na<0)return toast('Enter amount.',true);
-      if(src==='col'){const iv=byId('invoices',x.invoiceId);if(iv&&na>invDue(iv)+N(x.amount)+0.01)return toast('Amount cannot be more than the bill.',true);
+      if(!guardEdit(src==='col'?x.date:recDate(x),nd))return;if(src==='col'){const iv=byId('invoices',x.invoiceId);if(iv&&na>invDue(iv)+N(x.amount)+0.01)return toast('Amount cannot be more than the bill.',true);
         const old=fmtDate(x.date)+' '+money(x.amount);x.date=nd;x.amount=na;log('Recovery','Collection edited',x.invoiceNo,old+' → '+fmtDate(nd)+' '+money(na))}
       else{const old=fmtDate(recDate(x))+' '+money(x.amount);x.date=nd;if(x.approvedDate)x.approvedDate=nd;x.amount=na;
         const ns=byId('shops',V('lgES2'));if(ns&&ns.id!==x.shopId){const from=x.shopName;x.shopId=ns.id;x.shopName=ns.name;DB.staffAdv.forEach(a=>{if(a.recoveryId===x.id)a.note='Recovery short: '+ns.name});log('Recovery','Moved to another shop',x.id,from+' → '+shopLabel(ns)+' '+money(na))}
@@ -1297,7 +1300,7 @@ function showLedger(shopId,tab){const sh=byId('shops',shopId);if(!sh)return;
         if(x.adjustType==='staff'){const a=DB.staffAdv.find(s=>s.recoveryId===x.id);if(a){if(x.short>0){a.amount=x.short;a.date=nd}else DB.staffAdv=DB.staffAdv.filter(s=>s!==a)}else if(x.short>0&&x.staffId&&x.status==='approved')DB.staffAdv.push({id:uid(),date:nd,staffId:x.staffId,staffName:x.staffName,type:'Cash Difference',amount:x.short,deductMonth:monthOf(nd),note:'Recovery short: '+x.shopName,recoveryId:x.id})}
         log('Recovery','Recovery edited',x.shopName,old+' → '+fmtDate(nd)+' '+money(na))}
       save();$('#lgEdit').innerHTML='';toast('Payment updated.');draw()}};
-  const delPay=key=>{const [src,id]=key.split(':');const x=src==='col'?byId('collections',id):byId('recoveries',id);if(!x)return;
+  const delPay=key=>{const [src,id]=key.split(':');const x=src==='col'?byId('collections',id):byId('recoveries',id);if(!x)return;if(!guardEdit(src==='col'?x.date:recDate(x)))return;
     if(!confirm('Delete this payment of '+money(x.amount)+' dated '+fmtDate(x.date)+'?'))return;
     if(src==='col'){DB.collections=DB.collections.filter(c=>c.id!==id);log('Recovery','Collection deleted',x.invoiceNo,money(x.amount))}
     else{DB.recoveries=DB.recoveries.filter(r=>r.id!==id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==id);log('Recovery','Deleted',x.shopName,money(x.amount))}
@@ -1317,7 +1320,7 @@ VIEWS.expenses=el=>{
   el.innerHTML=`<div class="card"><h3>Add expense</h3><div class="grid">${F('Date',inp('exDate',today(),'date'))}${F('Expense head',`<input id="exHead" list="exHL"><datalist id="exHL">${opt(heads)}</datalist>`)}${F('Amount',inp('exAmt','','number','inputmode="decimal"'))}${F('Account',sel('exAcc',accOptions(),'acc_cash'))}${F('Note',inp('exNote'),'wide')}</div><div class="row mt"><button class="btn pri" id="exGo">💾 Save</button></div></div>
    <div class="card"><h3>Expenses this month</h3>${table([{t:'Date'},{t:'Head'},{t:'Amount',n:1},{t:'Account'},{t:'Note'},{t:'By'},{t:''}],DB.expenses.filter(e=>monthOf(e.date)===thisMonth()).slice().reverse().map(e=>[fmtDate(e.date),esc(e.head),fmt(e.amount),esc((byId('accounts',e.accountId)||{}).name||''),esc(e.note||''),esc(e.by||''),isAdmin()?`<button class="btn sm bad" data-dex="${e.id}">🗑️</button>`:'']),['','Total',fmt(sum(DB.expenses.filter(e=>monthOf(e.date)===thisMonth()),e=>e.amount)),'','','',''])}</div>`;
   $('#exGo').onclick=()=>{if(!V('exHead')||N(V('exAmt'))<=0)return toast('Enter head and a positive amount.',true);if(!byId('accounts',V('exAcc')||'acc_cash'))return toast('Select a valid expense account.',true);if(!guard(V('exDate')))return;DB.expenses.push({id:uid(),date:V('exDate'),head:V('exHead'),amount:N(V('exAmt')),accountId:V('exAcc'),note:V('exNote'),by:ME.username});log('Expenses','Expense added',V('exHead'),money(V('exAmt')));save();toast('Expense saved.');render()};
-  $$('[data-dex]').forEach(b=>b.onclick=()=>confirmBox('Delete this expense?',()=>{DB.expenses=DB.expenses.filter(x=>x.id!==b.dataset.dex);log('Expenses','Expense deleted',b.dataset.dex);save();render()}));
+  $$('[data-dex]').forEach(b=>b.onclick=()=>guardEdit((byId('expenses',b.dataset.dex)||{}).date)&&confirmBox('Delete this expense?',()=>{DB.expenses=DB.expenses.filter(x=>x.id!==b.dataset.dex);log('Expenses','Expense deleted',b.dataset.dex);save();render()}));
 };
 VIEWS.accounts=el=>{
   el.innerHTML=`<div class="kpis">${DB.accounts.map(a=>`<div class="kpi"><small>${esc(a.name)} (${esc(a.type)})</small><b>${money(accountBalance(a.id))}</b></div>`).join('')}</div>
