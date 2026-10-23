@@ -982,7 +982,7 @@ function doLogin(){
     $('#loadingBrand').textContent='Loading '+(S().companyName||S().appName||'Distribution ERP');
     $('#loginLoading').classList.add('on');
     startApp();
-    setTimeout(()=>{ $('#loginLoading').classList.remove('on');if(btn){btn.disabled=false;btn.textContent='Sign in'}if(user.mustChange)setTimeout(()=>changePasswordDialog(true),200); },850);
+    setTimeout(()=>{ $('#loginLoading').classList.remove('on');if(btn){btn.disabled=false;btn.textContent='Sign in'} },850);
   }catch(err){console.error('Login failed:',err);ME=null;$('#loginLoading').classList.remove('on');$('#loginErr').textContent='Login process encountered a browser storage issue. Your saved ERP data has not been intentionally cleared. Close other tabs using this ERP, refresh, and try again. If it continues, download a backup before clearing browser site data.';if(btn){btn.disabled=false;btn.textContent='Sign in'}sessionStorage.removeItem(SESSION_KEY);localStorage.removeItem(SESSION_KEY)}
 }
 /* developer password reset from the login screen: verify developer login (or recovery key) once, then change any user's password */
@@ -1026,7 +1026,7 @@ function tickClock(){const d=new Date();const c=$('#bizDate');
 }
 /* dashboard refreshes itself every 30 seconds (only when nothing is open and the tab is visible) */
 let LIVE_AT=null;
-function liveRefresh(){if(!ME||CUR!=='dashboard'||document.hidden)return;if($('#modalBg').classList.contains('on')||$('#welcome').classList.contains('on'))return;const y=window.scrollY;render();window.scrollTo(0,y)}
+function liveRefresh(){if(!ME||CUR!=='dashboard'||document.hidden||typing())return;if($('#modalBg').classList.contains('on')||$('#welcome').classList.contains('on'))return;const y=window.scrollY;render();window.scrollTo(0,y)}
 
 /* ---------- welcome screen (shown once after sign in) ---------- */
 function welcomeFacts(){const t=today();const r=ME.role;
@@ -1084,6 +1084,11 @@ function showBuyDialog(){const L=LIC();const wa=String(L.whatsapp||'').replace(/
 function lastClosed(){return DB.dayEnds.reduce((m,d)=>d.date>m?d.date:m,'')}
 function isLocked(date){const c=lastClosed();return !!c&&!!date&&String(date).slice(0,10)<=c&&!isDev()}
 function guard(...dates){if(dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. No new entry, edit or delete is allowed on this date.',true);return false}return true}
+
+/* background refresh (cloud, other tab, sync) must never rebuild a screen while someone is typing:
+   that would drop the focus (mobile keyboard closes) and the text typed so far */
+function typing(){const a=document.activeElement;return !!a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&!a.readOnly&&!!(a.closest('#view')||a.closest('.modal'))}
+function deferRender(tries){tries=tries||0;if(!ME)return;if(typing()||$('#modalBg').classList.contains('on')){if(tries<20)setTimeout(()=>deferRender(tries+1),3000);return}render()}
 
 /* ---------- UI primitives ---------- */
 function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='on'+(bad?' bad':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2800)}
@@ -1211,9 +1216,9 @@ const Cloud={ready:false,ref:null,pulling:false,_t:null,
       const path='ftErp/'+(fb.path||S().companyName||'default').toLowerCase().replace(/[^a-z0-9]+/g,'-');
       this.ref=firebase.database().ref(path);this.ready=true;
       const snap=await this.ref.once('value');const remote=snap.val();
-      if(remote&&remote.data){const r=JSON.parse(remote.data);if(N(r.meta&&r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;render()}}}
+      if(remote&&remote.data){const r=JSON.parse(remote.data);if(N(r.meta&&r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;deferRender()}}}
       else this.push(true);
-      this.ref.on('value',s=>{const v=s.val();if(!v||!v.data||v.by===this.client)return;const r=JSON.parse(v.data);if(N(r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;applyBranding();render()}}});
+      this.ref.on('value',s=>{const v=s.val();if(!v||!v.data||v.by===this.client)return;const r=JSON.parse(v.data);if(N(r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;applyBranding();deferRender()}}});
       toast('Cloud sync connected');
     }catch(e){console.error(e);toast('Cloud sync could not connect: '+e.message,true)}
   },
@@ -1563,7 +1568,7 @@ function startApp(){
   $('#avatar').textContent=(ME.name||ME.username)[0].toUpperCase();$('#uName').textContent=ME.name||ME.username;$('#uRole').textContent=ME.role==='developer'?'Developer':ROLES[ME.role]||ME.role;
   $('#uMenuInfo').textContent=(ME.name||ME.username)+' • '+$('#uRole').textContent;
   tickClock();
-  Orders.init().then(()=>{Net.start();NetBar.update();if(['orderSync','invoices','pos','fsSettings','liveOrders'].includes(CUR))render()});
+  Orders.init().then(()=>{Net.start();NetBar.update();if(['orderSync','invoices','fsSettings','liveOrders'].includes(CUR))deferRender()});
   const h=location.hash.slice(1);go(h&&MODULES.some(m=>m.id===h)?h:'dashboard');
 }
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.kpi[data-go]')){e.preventDefault();go(e.target.dataset.go)}});
@@ -1854,7 +1859,7 @@ const Orders={map:new Map(),days:new Map(),ready:false,syncing:false,last:null,p
   init(){return this._init||(this._init=(async()=>{
     await ODB.open();
     if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load()}catch(e){console.error(e)}}
-    try{if(navigator.storage&&navigator.storage.persist)this.persisted=(await navigator.storage.persisted())||(await navigator.storage.persist())}catch(e){}
+    try{if(navigator.storage&&navigator.storage.persist)Promise.resolve(navigator.storage.persisted()).then(v=>v||navigator.storage.persist()).then(v=>{this.persisted=v;if(CUR==='orderSync')deferRender()}).catch(()=>{})}catch(e){}
     this.ready=true})())},
   mine(date){return Array.from(this.map.values()).filter(o=>ME&&o.bookerId===ME.id&&(!date||o.date===date)).sort((a,b)=>a.createdAtMs-b.createdAtMs)},
   pendingN(date){return this.mine(date).filter(o=>o.status==='pending').length},
@@ -1919,7 +1924,7 @@ const NetBar={
     b.innerHTML=`<span class="dot"></span><b>${up?'Online':'Offline'+(isB?' — '+n+' orders pending':'')}</b>${more}<span class="sp"></span>`+
       (isB?`<button type="button" class="nb-btn" id="nbSync"${Orders.syncing?' disabled':''}>${Orders.syncing?'⏳ Sync ho raha hai…':'🔄 Sync'}</button>`:'');
     const s=$('#nbSync');if(s)s.onclick=syncUI;
-    if(!fromRender&&CUR==='orderSync'){clearTimeout(NetBar._r);NetBar._r=setTimeout(()=>{if(CUR==='orderSync'&&!$('#modalBg').classList.contains('on'))render()},80)}}
+    if(!fromRender&&CUR==='orderSync'){clearTimeout(NetBar._r);NetBar._r=setTimeout(()=>{if(CUR==='orderSync')deferRender()},80)}}
 };
 async function syncUI(){
   if(Orders.syncing)return;
@@ -2453,39 +2458,71 @@ VIEWS.staff=el=>{
     return{cols:[{t:'Date'},{t:'Staff'},{t:'Type'},{t:'Amount',n:1},{t:'Deduction month'},{t:'Note'}],rows:l.map(a=>[fmtDate(a.date),a.staffName,a.type,a.amount,a.deductMonth,a.note||'']),foot:['','','Total',sum(l,a=>a.amount),'',''],l}},
     after:(out,R)=>{if(!isAdmin())return;out.querySelectorAll('tbody tr').forEach((tr,i)=>{const a=R.l[i];if(!a)return;const td=document.createElement('td');td.innerHTML='<button class="btn sm bad">🗑️</button>';tr.appendChild(td);td.firstChild.onclick=()=>guard(a.date)&&confirmBox('Delete this entry?',()=>{DB.staffAdv=DB.staffAdv.filter(x=>x.id!==a.id);log('Staff','Entry deleted',a.staffName,money(a.amount));save();render()})})}});
 };
-function salaryCalc(staffId,month){
-  const su=DB.salarySetup[staffId]||{basic:0,paidLeaves:0};const attRec=(DB.attendance[staffId]||{})[month];const att=attRec||{};
+const ALLOW_TYPES=['Government','Company','Other'];
+/* overtime aur allowances optional hain: setup mein na hon to salary pehle jaisi hi banti hai.
+   o = {otHours, extra:[{name,type,amount}]} (sirf is mahine ke liye) */
+function salaryCalc(staffId,month,o){
+  o=o||{};const su=DB.salarySetup[staffId]||{basic:0,paidLeaves:0};const attRec=(DB.attendance[staffId]||{})[month];const att=attRec||{};
   const [y,m]=month.split('-').map(Number);const days=new Date(y,m,0).getDate();let P=0,A=0,L=0,H=0;
   for(let d=1;d<=days;d++){const v=att[d]||'P';if(v==='P')P++;else if(v==='A')A++;else if(v==='L')L++;else if(v==='H')H++}
   const paidL=Math.min(L,N(su.paidLeaves));const payDays=P+H+paidL;const perDay=N(su.basic)/days;const gross=r2(perDay*payDays);
   const adv=DB.staffAdv.filter(a=>a.staffId===staffId&&a.deductMonth===month);
   const advanceDed=sum(adv.filter(a=>a.type==='Advance'||a.type==='Loan'),a=>a.amount),cashDiffDed=sum(adv.filter(a=>a.type==='Cash Difference'),a=>a.amount),otherDed=sum(adv.filter(a=>a.type==='Other Deduction'),a=>a.amount);
-  return{noAtt:!attRec,noSetup:!N(su.basic),basic:N(su.basic),days,P,A,L,H,paidL,payDays,gross,advanceDed,cashDiffDed,otherDed,net:r2(gross-advanceDed-cashDiffDed-otherDed)};
+  const allowances=(su.allowances||[]).concat(o.extra||[]).filter(a=>N(a.amount)>0).map(a=>({name:a.name||'Allowance',type:a.type||'Other',amount:r2(a.amount)}));
+  const allowTotal=sum(allowances,a=>a.amount);
+  const duty=N(su.dutyHours)||8;const otRate=su.otOn?(su.otMode==='multiple'?r2(N(su.basic)/days/duty*N(su.otRate)):N(su.otRate)):0;
+  const otHours=su.otOn?N(o.otHours):0;const otAmount=r2(otHours*otRate);
+  return{noAtt:!attRec,noSetup:!N(su.basic),basic:N(su.basic),days,P,A,L,H,paidL,payDays,gross,allowances,allowTotal,otOn:!!su.otOn,otHours,otRate,otAmount,advanceDed,cashDiffDed,otherDed,net:r2(gross+allowTotal+otAmount-advanceDed-cashDiffDed-otherDed)};
 }
-function salarySlip(s){return`<div class="meta"><div><b>Employee:</b> ${esc(s.staffName)}</div><div><b>Month:</b> ${esc(s.month)}</div></div><table class="kv">
+function salarySlip(s){
+  const al=(s.allowances||[]).map(a=>`<tr><td>Allowance: ${esc(a.name)} (${esc(a.type)})</td><td>+ ${money(a.amount)}</td></tr>`).join('');
+  const ot=N(s.otAmount)>0?`<tr><td>Overtime (${fmt(s.otHours)} hrs × ${money(s.otRate)})</td><td>+ ${money(s.otAmount)}</td></tr>`:'';
+  return`<div class="meta"><div><b>Employee:</b> ${esc(s.staffName)}</div><div><b>Month:</b> ${esc(s.month)}</div></div><table class="kv">
  <tr><td>Basic salary</td><td>${money(s.basic)}</td></tr><tr><td>Days in month / pay days</td><td>${s.days} / ${s.payDays}</td></tr><tr><td>Present / Holiday / Leave / Absent</td><td>${s.P} / ${s.H} / ${s.L} / ${s.A}</td></tr>
- <tr><td>Earned salary</td><td>${money(s.gross)}</td></tr><tr><td>Advance / loan deduction</td><td>- ${money(s.advanceDed)}</td></tr><tr><td>Cash difference</td><td>- ${money(s.cashDiffDed)}</td></tr><tr><td>Other deduction</td><td>- ${money(s.otherDed)}</td></tr><tr><td><b>Net payable</b></td><td>${money(s.net)}</td></tr></table>`}
+ <tr><td>Earned salary</td><td>${money(s.gross)}</td></tr>${al}${ot}<tr><td>Advance / loan deduction</td><td>- ${money(s.advanceDed)}</td></tr><tr><td>Cash difference</td><td>- ${money(s.cashDiffDed)}</td></tr><tr><td>Other deduction</td><td>- ${money(s.otherDed)}</td></tr><tr><td><b>Net payable</b></td><td>${money(s.net)}</td></tr></table>`}
 VIEWS.salary=el=>{
   const st=staffList();const so=st.map(u=>({v:u.id,t:u.name||u.username}));
   el.innerHTML=`<div class="tabs"><button class="on" data-sl="setup">Salary setup</button><button data-sl="att">Attendance</button><button data-sl="gen">Generate salary</button><button data-sl="rec">Records</button></div><div id="slO"></div>`;
   const tabs={
-   setup:o=>{o.innerHTML=`<div class="card"><h3>Salary setup</h3><div class="grid">${F('Staff',sel('ssS',so,'','Select'))}${F('Monthly basic salary',inp('ssB','','number'))}${F('Paid leave days / month',inp('ssL','','number'))}${F('Effective from',inp('ssE',today(),'date'))}</div><div class="row mt"><button class="btn pri" id="ssGo">💾 Save</button></div></div><div class="card"><h3>Setup list</h3>${table([{t:'Staff'},{t:'Role'},{t:'Basic',n:1},{t:'Paid leaves',n:1}],st.map(u=>{const s=DB.salarySetup[u.id]||{};return[esc(u.name||u.username),ROLES[u.role]||u.role,fmt(s.basic),s.paidLeaves||0]}))}</div>`;
-     $('#ssS').onchange=()=>{const s=DB.salarySetup[V('ssS')]||{};$('#ssB').value=s.basic||'';$('#ssL').value=s.paidLeaves||''};
-     $('#ssGo').onclick=()=>{if(!V('ssS'))return toast('Select staff.',true);DB.salarySetup[V('ssS')]={basic:N(V('ssB')),paidLeaves:N(V('ssL')),from:V('ssE')};save();toast('Saved.');tabs.setup(o)}},
+   setup:o=>{let al=[];
+     o.innerHTML=`<div class="card"><h3>Salary setup</h3><div class="grid">${F('Staff',sel('ssS',so,'','Select'))}${F('Monthly basic salary',inp('ssB','','number'))}${F('Paid leave days / month',inp('ssL','','number'))}${F('Effective from',inp('ssE',today(),'date'))}</div>
+      <h4 class="mt">Overtime <span class="muted small">(optional — jo overtime nahi dete unke liye "No" rehne dein)</span></h4>
+      <div class="grid">${F('Overtime',sel('ssOn',[{v:'0',t:'No'},{v:'1',t:'Yes'}],'0'))}</div>
+      <div class="grid hidden" id="ssOt">${F('Overtime rate type',sel('ssOm',[{v:'fixed',t:'Fixed Rs per hour'},{v:'multiple',t:'Normal hourly rate × multiplier'}],'fixed'))}${F('Rate (Rs/hour, ya multiplier jaise 1.5 / 2)',inp('ssOr','','number','step="0.01"'))}${F('Duty hours per day (multiplier ke liye)',inp('ssOd','8','number'))}</div>
+      <h4 class="mt">Allowances <span class="muted small">(optional — Government ya Company ki taraf se har mahine ka allowance)</span></h4>
+      <div class="grid">${F('Allowance name',inp('ssAn','','text','placeholder="e.g. Fuel / Govt. allowance"'))}${F('Given by',sel('ssAt',ALLOW_TYPES,'Company'))}${F('Amount / month',inp('ssAa','','number'))}<div class="f"><label>&nbsp;</label><button class="btn" id="ssAdd" type="button">+ Add allowance</button></div></div>
+      <div id="ssAl" class="mt"></div>
+      <div class="row mt"><button class="btn pri" id="ssGo">💾 Save</button></div></div><div class="card"><h3>Setup list</h3>${table([{t:'Staff'},{t:'Role'},{t:'Basic',n:1},{t:'Paid leaves',n:1},{t:'Overtime'},{t:'Allowances',n:1}],st.map(u=>{const x=DB.salarySetup[u.id]||{};return[esc(u.name||u.username),ROLES[u.role]||u.role,fmt(x.basic),x.paidLeaves||0,x.otOn?(x.otMode==='multiple'?'Yes (× '+x.otRate+')':'Yes (Rs '+x.otRate+'/hr)'):'No',fmt(sum(x.allowances||[],a=>a.amount))]}))}</div>`;
+     const otToggle=()=>$('#ssOt').classList.toggle('hidden',V('ssOn')!=='1');
+     const drawAl=()=>{$('#ssAl').innerHTML=al.length?table([{t:'Allowance'},{t:'Given by'},{t:'Amount',n:1},{t:''}],al.map((a,i)=>[esc(a.name),esc(a.type),fmt(a.amount),`<button class="btn sm bad" type="button" data-ra="${i}">✕</button>`]),['','Total',fmt(sum(al,a=>a.amount)),'']):'<p class="small muted">Koi allowance nahi.</p>';$$('#ssAl [data-ra]').forEach(b=>b.onclick=()=>{al.splice(+b.dataset.ra,1);drawAl()})};
+     $('#ssOn').onchange=otToggle;
+     $('#ssS').onchange=()=>{const x=DB.salarySetup[V('ssS')]||{};$('#ssB').value=x.basic||'';$('#ssL').value=x.paidLeaves||'';$('#ssOn').value=x.otOn?'1':'0';$('#ssOm').value=x.otMode||'fixed';$('#ssOr').value=x.otRate||'';$('#ssOd').value=x.dutyHours||8;al=(x.allowances||[]).map(a=>({...a}));otToggle();drawAl()};
+     $('#ssAdd').onclick=()=>{if(!V('ssAn')||N(V('ssAa'))<=0)return toast('Allowance ka naam aur amount likhein.',true);al.push({id:uid(),name:V('ssAn'),type:V('ssAt'),amount:N(V('ssAa'))});$('#ssAn').value='';$('#ssAa').value='';drawAl()};
+     $('#ssGo').onclick=()=>{if(!V('ssS'))return toast('Select staff.',true);const on=V('ssOn')==='1';if(on&&N(V('ssOr'))<=0)return toast('Overtime rate likhein (ya Overtime "No" karein).',true);
+       DB.salarySetup[V('ssS')]={basic:N(V('ssB')),paidLeaves:N(V('ssL')),from:V('ssE'),otOn:on,otMode:V('ssOm'),otRate:N(V('ssOr')),dutyHours:N(V('ssOd'))||8,allowances:al};save();toast('Saved.');tabs.setup(o)};drawAl()},
    att:o=>{o.innerHTML=`<div class="card"><h3>Monthly attendance</h3><div class="grid">${F('Staff',sel('atS',so,'','Select'))}${F('Month',inp('atM',thisMonth(),'month'))}</div><p class="small muted mt">P = Present, A = Absent, L = Leave, H = Holiday / Sunday</p><div id="atG" class="att-grid mt"></div><div class="row mt"><button class="btn" id="atP">All present</button><button class="btn" id="atSun">Sundays = Holiday</button><button class="btn pri" id="atGo">💾 Save attendance</button></div></div>`;
      const draw=()=>{const s=V('atS'),m=V('atM');if(!s){$('#atG').innerHTML='';return}const a=((DB.attendance[s]||{})[m])||{};const [y,mm]=m.split('-').map(Number);const days=new Date(y,mm,0).getDate();
        $('#atG').innerHTML=Array.from({length:days},(_,i)=>{const d=i+1;const dow=new Date(y,mm-1,d).getDay();return`<div class="att-day" style="${dow===0?'background:#f6f1e6':''}">${d} ${'SMTWTFS'[dow]}<select data-d="${d}">${opt(['P','A','L','H'],a[d]||(dow===0?'H':'P'))}</select></div>`}).join('')};
      ['atS','atM'].forEach(i=>$('#'+i).onchange=draw);
      $('#atP').onclick=()=>$$('#atG select').forEach(s=>s.value='P');$('#atSun').onclick=()=>{const [y,m]=V('atM').split('-').map(Number);$$('#atG select').forEach(s=>{if(new Date(y,m-1,+s.dataset.d).getDay()===0)s.value='H'})};
      $('#atGo').onclick=()=>{if(!V('atS'))return toast('Select staff.',true);const a={};$$('#atG select').forEach(s=>a[s.dataset.d]=s.value);(DB.attendance[V('atS')]=DB.attendance[V('atS')]||{})[V('atM')]=a;save();toast('Attendance saved.')}},
-   gen:o=>{o.innerHTML=`<div class="card"><h3>Generate salary</h3><div class="grid">${F('Staff',sel('sgS',so,'','Select'))}${F('Month',inp('sgM',thisMonth(),'month'))}${F('Pay now?',sel('sgP',[{v:'1',t:'Yes, pay from account'},{v:'0',t:'No, record only'}],'1'))}${F('Account',sel('sgA',accOptions(),'acc_cash'))}</div><div id="sgO" class="mt"></div><div class="row mt"><button class="btn" id="sgPr">🖨️ Slip print</button><button class="btn pri" id="sgGo">💾 Salary record save</button></div></div>`;
-     const calc=()=>{if(!V('sgS'))return null;const c=salaryCalc(V('sgS'),V('sgM'));const u=byId('users',V('sgS'));c.staffName=u.name||u.username;c.month=V('sgM');$('#sgO').innerHTML=(c.noSetup?'<p class="note" style="color:var(--bad)">Salary is not set up for this staff. First enter the salary in "Salary setup".</p>':'')+(c.noAtt?'<p class="note" style="color:var(--bad)">Attendance for this month is not saved. Mark it in "Attendance" first, otherwise the salary cannot be generated.</p>':'')+salarySlip(c).replace('<table class="kv">','<table class="kv" style="max-width:520px">');return c};
-     ['sgS','sgM'].forEach(i=>$('#'+i).onchange=calc);
+   gen:o=>{let ex=[],ot='';
+     o.innerHTML=`<div class="card"><h3>Generate salary</h3><div class="grid">${F('Staff',sel('sgS',so,'','Select'))}${F('Month',inp('sgM',thisMonth(),'month'))}${F('Pay now?',sel('sgP',[{v:'1',t:'Yes, pay from account'},{v:'0',t:'No, record only'}],'1'))}${F('Account',sel('sgA',accOptions(),'acc_cash'))}</div><div id="sgX" class="mt"></div><div id="sgO" class="mt"></div><div class="row mt"><button class="btn" id="sgPr">🖨️ Slip print</button><button class="btn pri" id="sgGo">💾 Salary record save</button></div></div>`;
+     const calc=()=>{if(!V('sgS'))return null;const c=salaryCalc(V('sgS'),V('sgM'),{otHours:N(V('sgOT')),extra:ex});const u=byId('users',V('sgS'));c.staffName=u.name||u.username;c.month=V('sgM');$('#sgO').innerHTML=(c.noSetup?'<p class="note" style="color:var(--bad)">Salary is not set up for this staff. First enter the salary in "Salary setup".</p>':'')+(c.noAtt?'<p class="note" style="color:var(--bad)">Attendance for this month is not saved. Mark it in "Attendance" first, otherwise the salary cannot be generated.</p>':'')+salarySlip(c).replace('<table class="kv">','<table class="kv" style="max-width:520px">');return c};
+     /* sirf is mahine ke liye: overtime hours (agar is staff ka overtime on hai) aur extra allowance */
+     const drawX=()=>{const su=DB.salarySetup[V('sgS')]||{};if(!V('sgS')){$('#sgX').innerHTML='';return}
+       $('#sgX').innerHTML=(su.otOn?`<div class="grid">${F('Overtime hours (is mahine)',inp('sgOT',ot,'number','step="0.25" min="0"'))}</div>`:'')+
+        `<h4>Extra allowance <span class="muted small">(optional — sirf is mahine ke liye, jaise Eid bonus ya Govt. allowance)</span></h4><div class="grid">${F('Name',inp('sgAn','','text','placeholder="e.g. Eid allowance"'))}${F('Given by',sel('sgAt',ALLOW_TYPES,'Company'))}${F('Amount',inp('sgAa','','number'))}<div class="f"><label>&nbsp;</label><button class="btn" id="sgAdd" type="button">+ Add</button></div></div>`+
+        (ex.length?`<div class="row mt">${ex.map((a,i)=>`<span class="chip">${esc(a.name)} (${esc(a.type)}): ${money(a.amount)} <button class="btn sm bad" type="button" data-rx="${i}">✕</button></span>`).join('')}</div>`:'');
+       if($('#sgOT'))$('#sgOT').oninput=()=>{ot=V('sgOT');calc()};
+       $('#sgAdd').onclick=()=>{if(!V('sgAn')||N(V('sgAa'))<=0)return toast('Allowance ka naam aur amount likhein.',true);ex.push({name:V('sgAn'),type:V('sgAt'),amount:N(V('sgAa'))});drawX();calc()};
+       $$('#sgX [data-rx]').forEach(b=>b.onclick=()=>{ex.splice(+b.dataset.rx,1);drawX();calc()})};
+     $('#sgS').onchange=()=>{ex=[];ot='';drawX();calc()};$('#sgM').onchange=()=>{ex=[];ot='';drawX();calc()};
      $('#sgPr').onclick=()=>{const c=calc();if(c)printDoc('salary',salarySlip(c))};
      $('#sgGo').onclick=()=>{const c=calc();if(!c)return toast('Select staff.',true);if(c.noSetup)return toast('Set up the salary first.',true);if(c.noAtt)return toast('Save attendance for this month first.',true);if(DB.salaries.some(s=>s.staffId===V('sgS')&&s.month===V('sgM')))return toast('Salary for this month is already generated. Delete it from Records and generate again.',true);
        const {noAtt,noSetup,...cc}=c;DB.salaries.push({id:uid(),staffId:V('sgS'),...cc,paid:V('sgP')==='1',paidDate:today(),accountId:V('sgA'),date:today(),by:ME.username});log('Salary','Salary generated',c.staffName,c.month+' '+money(c.net));save();toast('Salary record saved.');tabs.rec(o)}},
    rec:o=>{reportBlock(o,{title:'Salary records',filters:F('Staff',sel('rsS',so,'','All'))+F('Month',inp('rsM','','month')),build:()=>{const l=DB.salaries.filter(s=>(!V('rsS')||s.staffId===V('rsS'))&&(!V('rsM')||s.month===V('rsM')));
-     return{cols:[{t:'Month'},{t:'Staff'},{t:'Basic',n:1},{t:'Pay days',n:1},{t:'Earned',n:1},{t:'Advance',n:1},{t:'Cash diff',n:1},{t:'Other',n:1},{t:'Net',n:1},{t:'Paid'}],rows:l.map(s=>[s.month,s.staffName,s.basic,s.payDays,s.gross,s.advanceDed,s.cashDiffDed,s.otherDed,s.net,s.paid?'Yes':'No']),foot:['','Total','','',sum(l,s=>s.gross),sum(l,s=>s.advanceDed),sum(l,s=>s.cashDiffDed),sum(l,s=>s.otherDed),sum(l,s=>s.net),''],l}},
+     return{cols:[{t:'Month'},{t:'Staff'},{t:'Basic',n:1},{t:'Pay days',n:1},{t:'Earned',n:1},{t:'Allowances',n:1},{t:'Overtime',n:1},{t:'Advance',n:1},{t:'Cash diff',n:1},{t:'Other',n:1},{t:'Net',n:1},{t:'Paid'}],rows:l.map(s=>[s.month,s.staffName,s.basic,s.payDays,s.gross,N(s.allowTotal),N(s.otAmount),s.advanceDed,s.cashDiffDed,s.otherDed,s.net,s.paid?'Yes':'No']),foot:['','Total','','',sum(l,s=>s.gross),sum(l,s=>s.allowTotal),sum(l,s=>s.otAmount),sum(l,s=>s.advanceDed),sum(l,s=>s.cashDiffDed),sum(l,s=>s.otherDed),sum(l,s=>s.net),''],l}},
      after:(out,R)=>{if(!isAdmin())return;out.querySelectorAll('tbody tr').forEach((tr,i)=>{const s=R.l[i];const td=document.createElement('td');td.innerHTML=`<button class="btn sm">🖨️</button> <button class="btn sm bad">🗑️</button>`;tr.appendChild(td);const [p,d]=td.querySelectorAll('button');p.onclick=()=>printDoc('salary',salarySlip(s));d.onclick=()=>confirmBox('Delete this salary record?',()=>{DB.salaries=DB.salaries.filter(x=>x.id!==s.id);save();tabs.rec(o)})})}})}
   };
   $$('[data-sl]').forEach(b=>b.onclick=()=>{$$('[data-sl]').forEach(x=>x.classList.toggle('on',x===b));tabs[b.dataset.sl]($('#slO'))});tabs.setup($('#slO'));
@@ -2830,7 +2867,7 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   const sid=localStorage.getItem(SESSION_KEY);const u=sid&&DB.users.find(x=>x.id===sid&&x.active!==false);
   if(u){ME=u;startApp()}else $('#lu').focus();
   Cloud.init();
-  if(BC)BC.onmessage=async e=>{if(!e.data||N(e.data.updated)<=N(DB.meta.updated))return;const raw=await IDB.get(LS_KEY)||localStorage.getItem(LS_KEY);if(!raw)return;DB=normalize(JSON.parse(raw));clearCache();if(ME){ME=DB.users.find(x=>x.id===ME.id)||ME;applyBranding();render()}};
+  if(BC)BC.onmessage=async e=>{if(!e.data||N(e.data.updated)<=N(DB.meta.updated))return;const raw=await IDB.get(LS_KEY)||localStorage.getItem(LS_KEY);if(!raw)return;DB=normalize(JSON.parse(raw));clearCache();if(ME){ME=DB.users.find(x=>x.id===ME.id)||ME;applyBranding();deferRender()}};
   tickClock();setInterval(tickClock,1000);setInterval(liveRefresh,30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveRefresh()});
 })();
@@ -2843,7 +2880,7 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   document.addEventListener('touchstart',function(e){
     if(!e.touches||e.touches.length!==1)return;
     startY=e.touches[0].clientY;startX=e.touches[0].clientX;
-    tracking=scrollTop()<=0;
+    tracking=scrollTop()<=0&&!(e.target&&e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]'));
   },{passive:true});
   document.addEventListener('touchmove',function(e){
     if(!tracking||!e.touches||e.touches.length!==1)return;
