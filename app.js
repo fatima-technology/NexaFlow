@@ -1638,6 +1638,25 @@ const DEV_TABS={
   const read=()=>({limit:Math.max(1,N(V('dlLim'))||200),unlimited:V('dlUn')==='1',devName:V('dlName'),phone:V('dlPh'),whatsapp:V('dlWa'),email:V('dlEm'),message:V('dlMsg')});
   $('#dlSave').onclick=()=>{const old=LIC().unlimited;DB.licence=read();log('Developer','Licence saved',DB.licence.unlimited?'Unlimited':'Limit '+DB.licence.limit,old!==DB.licence.unlimited?(DB.licence.unlimited?'Unlimited turned ON':'Unlimited turned OFF'):'');save();toast('Licence saved.');renderDev()};
   $('#dlPrev').onclick=()=>{const keep=DB.licence;DB.licence={...keep,...read()};showBuyDialog();DB.licence=keep}}],
+ logs:['Activity log manager',el=>{
+  const TRACE='Activity entries deleted';
+  el.innerHTML=`<div class="card"><h3>Activity log: delete selected entries</h3><p class="muted">Show the entries, tick the ones to remove and press Delete. A reason is required. A permanent note (who, when, how many, why) stays in the log, and these note entries themselves cannot be deleted. Take a backup first.</p>
+   <div class="grid">${dateRange('lg',addDays(today(),-7),today())}${F('User',sel('lgU',[...new Set(DB.activity.map(a=>a.user))],'','All'))}${F('Module',sel('lgM',[...new Set(DB.activity.map(a=>a.module))].sort(),'','All'))}${F('Search',inp('lgQ'))}</div>
+   <div class="row mt"><button class="btn pri" id="lgShow">Show</button><button class="btn" id="lgAll">Tick / untick all shown</button></div>
+   <div class="grid mt">${F('Reason for deleting',inp('lgWhy'),'wide')}</div><div class="row mt"><button class="btn bad" id="lgDel">🗑️ Delete ticked</button></div><p class="small muted mt" id="lgCnt"></p><div id="lgOut"></div></div>`;
+  const isTrace=a=>a.module==='Developer'&&a.action===TRACE;
+  const show=()=>{const q=V('lgQ').trim().toLowerCase();const l=DB.activity.filter(a=>inRange(a.at.slice(0,10),V('lgFrom'),V('lgTo'))&&(!V('lgU')||a.user===V('lgU'))&&(!V('lgM')||a.module===V('lgM'))&&(!q||[a.module,a.action,a.record,a.details,a.user].join(' ').toLowerCase().includes(q)));
+    const sh=l.slice(0,500);$('#lgCnt').textContent=l.length+' entries match'+(l.length>sh.length?' (showing the first 500)':'');
+    $('#lgOut').innerHTML=table([{t:''},{t:'Time'},{t:'User'},{t:'Module'},{t:'Action'},{t:'Record'},{t:'Detail'}],sh.map(a=>[isTrace(a)?'🔒':`<input type="checkbox" data-lg="${a.id}">`,esc(a.at),esc(a.user),esc(a.module),esc(a.action),esc(a.record),esc(a.details)]))};
+  $('#lgShow').onclick=show;
+  $('#lgAll').onclick=()=>{const bx=$$('[data-lg]');const on=bx.some(b=>!b.checked);bx.forEach(b=>b.checked=on)};
+  $('#lgDel').onclick=()=>{const ids=new Set($$('[data-lg]:checked').map(b=>b.dataset.lg));if(!ids.size)return toast('Tick the entries first.',true);if(!V('lgWhy').trim())return toast('Enter the reason.',true);
+    confirmBox('Delete '+ids.size+' log entries permanently? A note will stay in the log.',()=>{const gone=DB.activity.filter(a=>ids.has(a.id)&&!isTrace(a));const why=V('lgWhy').trim();
+      const at=gone.map(a=>a.at).sort();const users=[...new Set(gone.map(a=>a.user))].join(', ');const mods=[...new Set(gone.map(a=>a.module))].join(', ');
+      DB.activity=DB.activity.filter(a=>!ids.has(a.id)||isTrace(a));
+      log('Developer',TRACE,gone.length+' entries',(at.length?'From '+at[0]+' to '+at[at.length-1]+'; ':'')+'users: '+(users||'-')+'; modules: '+(mods||'-')+'; reason: '+why);
+      save();toast(gone.length+' entries deleted.');show()})};
+  show()}],
  cloud:['Cloud sync',el=>{const fb=S().firebase;el.innerHTML=`<div class="card"><h3>Firebase cloud sync (same data on different mobiles / computers)</h3>
    <p class="muted">Create a Realtime Database in the Firebase console and paste its config here. This setting is needed only once on each device (or restore a backup).</p>
    <div class="grid">${F('Sync on',sel('dcOn',[{v:'1',t:'On'},{v:'0',t:'Off'}],fb.enabled?'1':'0'))}${F('Data name (separate for each company)',inp('dcPath',fb.path||'','text','placeholder="my-client-name"'))}${F('Firebase config',`<textarea id="dcCfg" rows="8" placeholder="{ apiKey: '...', authDomain: '...', databaseURL: '...', projectId: '...' }">${esc(fb.config)}</textarea>`,'wide')}</div>
