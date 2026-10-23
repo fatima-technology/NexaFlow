@@ -943,6 +943,8 @@ function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
   if(mid==='orderSync')return ME.role==='booker';
+  if(mid==='bookerReports')return ME.role==='booker'||isDev();
+  if(mid==='storeReports')return ME.role==='storemanager'||isDev();
   if(mid==='liveOrders')return isAdmin();
   if(mid==='attendanceLog'&&isAdmin())return true;
   if(isDev())return true;
@@ -1532,7 +1534,9 @@ function buildNav(){
   Object.keys(groups).forEach(g=>{if(!(g in NAV_GROUPS_OPEN))NAV_GROUPS_OPEN[g]=g===activeGroup;});
   // Keep the active screen's group open after navigation; other groups remain user-toggleable.
   if(activeGroup)NAV_GROUPS_OPEN[activeGroup]=true;
-  $('#nav').innerHTML=Object.entries(groups).map(([g,ms])=>{const open=!!NAV_GROUPS_OPEN[g];return `<div class="nav-group${open?'':' closed'}" data-nav-group="${esc(g)}"><span><button type="button" class="nav-group-toggle" data-toggle-group="${esc(g)}" aria-expanded="${open}"><span>${esc(g)}</span><span class="nav-chevron">▾</span></button></span><div class="nav-items">${ms.map(m=>`<button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button>`).join('')}</div></div>`}).join('');
+  $('#nav').innerHTML=Object.entries(groups).map(([g,ms])=>{const open=!!NAV_GROUPS_OPEN[g];
+    if(ms.length===1){const m=ms[0];return `<div class="nav-group single"><button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button></div>`}
+    return `<div class="nav-group${open?'':' closed'}" data-nav-group="${esc(g)}"><span><button type="button" class="nav-group-toggle" data-toggle-group="${esc(g)}" aria-expanded="${open}"><span>${esc(g)}</span><span class="nav-chevron">▾</span></button></span><div class="nav-items">${ms.map(m=>`<button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button>`).join('')}</div></div>`}).join('');
   const prefs={booker:['dashboard','pos','orderSync','recovery'],supplyman:['dashboard','collection','help'],kpo:['dashboard','pos','invoices','collection']}[ME.role]||['dashboard','pos','invoices','reports'];
   const bn=prefs.filter(canSee).slice(0,4).map(id=>MODULES.find(m=>m.id===id));
   $('#bottomNav').style.gridTemplateColumns=`repeat(${bn.length+1},1fr)`;
@@ -2600,7 +2604,7 @@ VIEWS.reports=el=>{
    STORE MANAGER STOCK MOVEMENT REPORTS
    ===================================================================== */
 VIEWS.storeReports=el=>{
-  if(ME.role!=='storemanager'&&!isAdmin()&&ME.role!=='developer'){el.innerHTML='<div class="card">This report is available to Store Managers only.</div>';return}
+  if(ME.role!=='storemanager'&&ME.role!=='developer'){el.innerHTML='<div class="card">This report is available to Store Managers only.</div>';return}
   const monthStart=()=>today().slice(0,8)+'01';
   el.innerHTML=`<div class="card"><h3>Store Manager — Stock Control Reports</h3><p class="muted">Track stock received, sold/issued, returned, claimed and closing balance by date and product.</p>
     <div class="grid">${F('From date',inp('smFrom',monthStart(),'date'))}${F('To date',inp('smTo',today(),'date'))}${F('Product',sel('smProd',DB.products.map(p=>({v:p.id,t:p.name})).sort((a,b)=>a.t.localeCompare(b.t)),'','All products'))}${F('Movement type',sel('smType',[{v:'',t:'All movements'},{v:'Purchase',t:'Purchase / stock received'},{v:'Sale',t:'Sales / stock out'},{v:'Return',t:'Returns to stock'},{v:'Claim',t:'Claims / damaged stock'}],''))}</div>
