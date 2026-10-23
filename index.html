@@ -982,7 +982,7 @@ function doLogin(){
     $('#loadingBrand').textContent='Loading '+(S().companyName||S().appName||'Distribution ERP');
     $('#loginLoading').classList.add('on');
     startApp();
-    setTimeout(()=>{ $('#loginLoading').classList.remove('on');if(btn){btn.disabled=false;btn.textContent='Sign in'}if(user.mustChange)setTimeout(()=>changePasswordDialog(true),200); },850);
+    setTimeout(()=>{ $('#loginLoading').classList.remove('on');if(btn){btn.disabled=false;btn.textContent='Sign in'} },850);
   }catch(err){console.error('Login failed:',err);ME=null;$('#loginLoading').classList.remove('on');$('#loginErr').textContent='Login process encountered a browser storage issue. Your saved ERP data has not been intentionally cleared. Close other tabs using this ERP, refresh, and try again. If it continues, download a backup before clearing browser site data.';if(btn){btn.disabled=false;btn.textContent='Sign in'}sessionStorage.removeItem(SESSION_KEY);localStorage.removeItem(SESSION_KEY)}
 }
 /* developer password reset from the login screen: verify developer login (or recovery key) once, then change any user's password */
@@ -1026,7 +1026,7 @@ function tickClock(){const d=new Date();const c=$('#bizDate');
 }
 /* dashboard refreshes itself every 30 seconds (only when nothing is open and the tab is visible) */
 let LIVE_AT=null;
-function liveRefresh(){if(!ME||CUR!=='dashboard'||document.hidden)return;if($('#modalBg').classList.contains('on')||$('#welcome').classList.contains('on'))return;const y=window.scrollY;render();window.scrollTo(0,y)}
+function liveRefresh(){if(!ME||CUR!=='dashboard'||document.hidden||typing())return;if($('#modalBg').classList.contains('on')||$('#welcome').classList.contains('on'))return;const y=window.scrollY;render();window.scrollTo(0,y)}
 
 /* ---------- welcome screen (shown once after sign in) ---------- */
 function welcomeFacts(){const t=today();const r=ME.role;
@@ -1084,6 +1084,11 @@ function showBuyDialog(){const L=LIC();const wa=String(L.whatsapp||'').replace(/
 function lastClosed(){return DB.dayEnds.reduce((m,d)=>d.date>m?d.date:m,'')}
 function isLocked(date){const c=lastClosed();return !!c&&!!date&&String(date).slice(0,10)<=c&&!isDev()}
 function guard(...dates){if(dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. No new entry, edit or delete is allowed on this date.',true);return false}return true}
+
+/* background refresh (cloud, other tab, sync) must never rebuild a screen while someone is typing:
+   that would drop the focus (mobile keyboard closes) and the text typed so far */
+function typing(){const a=document.activeElement;return !!a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&!a.readOnly&&!!(a.closest('#view')||a.closest('.modal'))}
+function deferRender(tries){tries=tries||0;if(!ME)return;if(typing()||$('#modalBg').classList.contains('on')){if(tries<20)setTimeout(()=>deferRender(tries+1),3000);return}render()}
 
 /* ---------- UI primitives ---------- */
 function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='on'+(bad?' bad':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2800)}
@@ -1211,9 +1216,9 @@ const Cloud={ready:false,ref:null,pulling:false,_t:null,
       const path='ftErp/'+(fb.path||S().companyName||'default').toLowerCase().replace(/[^a-z0-9]+/g,'-');
       this.ref=firebase.database().ref(path);this.ready=true;
       const snap=await this.ref.once('value');const remote=snap.val();
-      if(remote&&remote.data){const r=JSON.parse(remote.data);if(N(r.meta&&r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;render()}}}
+      if(remote&&remote.data){const r=JSON.parse(remote.data);if(N(r.meta&&r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;deferRender()}}}
       else this.push(true);
-      this.ref.on('value',s=>{const v=s.val();if(!v||!v.data||v.by===this.client)return;const r=JSON.parse(v.data);if(N(r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;applyBranding();render()}}});
+      this.ref.on('value',s=>{const v=s.val();if(!v||!v.data||v.by===this.client)return;const r=JSON.parse(v.data);if(N(r.meta.updated)>N(DB.meta.updated)){DB=normalize(r);save(true);if(ME){ME=DB.users.find(u=>u.id===ME.id)||ME;applyBranding();deferRender()}}});
       toast('Cloud sync connected');
     }catch(e){console.error(e);toast('Cloud sync could not connect: '+e.message,true)}
   },
@@ -1563,7 +1568,7 @@ function startApp(){
   $('#avatar').textContent=(ME.name||ME.username)[0].toUpperCase();$('#uName').textContent=ME.name||ME.username;$('#uRole').textContent=ME.role==='developer'?'Developer':ROLES[ME.role]||ME.role;
   $('#uMenuInfo').textContent=(ME.name||ME.username)+' • '+$('#uRole').textContent;
   tickClock();
-  Orders.init().then(()=>{Net.start();NetBar.update();if(['orderSync','invoices','pos','fsSettings','liveOrders'].includes(CUR))render()});
+  Orders.init().then(()=>{Net.start();NetBar.update();if(['orderSync','invoices','fsSettings','liveOrders'].includes(CUR))deferRender()});
   const h=location.hash.slice(1);go(h&&MODULES.some(m=>m.id===h)?h:'dashboard');
 }
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.kpi[data-go]')){e.preventDefault();go(e.target.dataset.go)}});
@@ -1854,7 +1859,7 @@ const Orders={map:new Map(),days:new Map(),ready:false,syncing:false,last:null,p
   init(){return this._init||(this._init=(async()=>{
     await ODB.open();
     if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load()}catch(e){console.error(e)}}
-    try{if(navigator.storage&&navigator.storage.persist)this.persisted=(await navigator.storage.persisted())||(await navigator.storage.persist())}catch(e){}
+    try{if(navigator.storage&&navigator.storage.persist)Promise.resolve(navigator.storage.persisted()).then(v=>v||navigator.storage.persist()).then(v=>{this.persisted=v;if(CUR==='orderSync')deferRender()}).catch(()=>{})}catch(e){}
     this.ready=true})())},
   mine(date){return Array.from(this.map.values()).filter(o=>ME&&o.bookerId===ME.id&&(!date||o.date===date)).sort((a,b)=>a.createdAtMs-b.createdAtMs)},
   pendingN(date){return this.mine(date).filter(o=>o.status==='pending').length},
@@ -1919,7 +1924,7 @@ const NetBar={
     b.innerHTML=`<span class="dot"></span><b>${up?'Online':'Offline'+(isB?' — '+n+' orders pending':'')}</b>${more}<span class="sp"></span>`+
       (isB?`<button type="button" class="nb-btn" id="nbSync"${Orders.syncing?' disabled':''}>${Orders.syncing?'⏳ Sync ho raha hai…':'🔄 Sync'}</button>`:'');
     const s=$('#nbSync');if(s)s.onclick=syncUI;
-    if(!fromRender&&CUR==='orderSync'){clearTimeout(NetBar._r);NetBar._r=setTimeout(()=>{if(CUR==='orderSync'&&!$('#modalBg').classList.contains('on'))render()},80)}}
+    if(!fromRender&&CUR==='orderSync'){clearTimeout(NetBar._r);NetBar._r=setTimeout(()=>{if(CUR==='orderSync')deferRender()},80)}}
 };
 async function syncUI(){
   if(Orders.syncing)return;
@@ -2862,7 +2867,7 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   const sid=localStorage.getItem(SESSION_KEY);const u=sid&&DB.users.find(x=>x.id===sid&&x.active!==false);
   if(u){ME=u;startApp()}else $('#lu').focus();
   Cloud.init();
-  if(BC)BC.onmessage=async e=>{if(!e.data||N(e.data.updated)<=N(DB.meta.updated))return;const raw=await IDB.get(LS_KEY)||localStorage.getItem(LS_KEY);if(!raw)return;DB=normalize(JSON.parse(raw));clearCache();if(ME){ME=DB.users.find(x=>x.id===ME.id)||ME;applyBranding();render()}};
+  if(BC)BC.onmessage=async e=>{if(!e.data||N(e.data.updated)<=N(DB.meta.updated))return;const raw=await IDB.get(LS_KEY)||localStorage.getItem(LS_KEY);if(!raw)return;DB=normalize(JSON.parse(raw));clearCache();if(ME){ME=DB.users.find(x=>x.id===ME.id)||ME;applyBranding();deferRender()}};
   tickClock();setInterval(tickClock,1000);setInterval(liveRefresh,30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveRefresh()});
 })();
@@ -2875,7 +2880,7 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   document.addEventListener('touchstart',function(e){
     if(!e.touches||e.touches.length!==1)return;
     startY=e.touches[0].clientY;startX=e.touches[0].clientX;
-    tracking=scrollTop()<=0;
+    tracking=scrollTop()<=0&&!(e.target&&e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]'));
   },{passive:true});
   document.addEventListener('touchmove',function(e){
     if(!tracking||!e.touches||e.touches.length!==1)return;
