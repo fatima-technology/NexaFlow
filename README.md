@@ -25,5 +25,5 @@ The default theme is now **NexaFlow Modern** with a forest-green / mint palette,
 
 ### Firebase setup (ek baar)
 1. Firestore Database banayein. 2. Authentication → Anonymous enable karein. 3. `firestore.rules` ko Rules tab mein publish karein.
-
+Automatic deployment test
 Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-only rakhte hain. Note: app ka login Firebase Auth se juda nahi, is liye rules yeh nahi pehchan sakte ke request kis booker ne bheji; woh sirf (booker, date) ke Day End lock ko enforce karte hain.
