@@ -221,6 +221,7 @@ function tickClock(){const d=new Date();const c=$('#bizDate');
   if(c)c.innerHTML=`<span class="cd">${DAYS[d.getDay()].slice(0,3)}<span class="cdt">, ${fmtDate(dstr(d))} •</span></span> <span class="ct">${timeText(d,true)}</span>`;
   const w=$('#wClock');if(w)w.textContent=timeText(d,true);
   const day=dstr(d);if(ME&&tickClock.day&&tickClock.day!==day&&CUR==='dashboard')render();tickClock.day=day;
+  if(ME&&(!tickClock.od||Date.now()-tickClock.od>10000)){tickClock.od=Date.now();const o=!!dayEndOverdue();if(o!==tickClock.lock){const first=tickClock.lock===undefined;tickClock.lock=o;if(!first)render()}}
 }
 /* dashboard refreshes itself every 30 seconds (only when nothing is open and the tab is visible) */
 let LIVE_AT=null;
@@ -281,11 +282,20 @@ function showBuyDialog(){const L=LIC();const wa=String(L.whatsapp||'').replace(/
 /* ---------- day end lock ---------- */
 function lastClosed(){return DB.dayEnds.reduce((m,d)=>d.date>m?d.date:m,'')}
 function isLocked(date){const c=lastClosed();return !!c&&!!date&&String(date).slice(0,10)<=c&&!isDev()}
+/* Day End deadline: a day with entries must be closed by 10:00 AM next day, after that only the Day End process works (developer exempt) */
+const DAYEND_HOUR=10;
+function dayEndOverdue(){if(!ME||isDev())return '';
+  const now=new Date();const t=dstr(now);const cutoff=addDays(t,now.getHours()>=DAYEND_HOUR?-1:-2);const lc=lastClosed();
+  if(lc>=cutoff)return '';
+  const lists=[DB.invoices,DB.recoveries,DB.collections,DB.expenses,DB.purchases,DB.returns,DB.supplierPayments,DB.transfers,DB.staffAdv,DB.investorTxns];
+  let first='';for(const L of lists)for(const x of (L||[])){const d=String(x.date||'').slice(0,10);if(d&&d>lc&&d<=cutoff&&(!first||d<first))first=d}
+  return first}
+function overdueBlock(){const o=dayEndOverdue();if(o){toast('System is locked: Day End for '+fmtDate(o)+' is pending. Only Day End can be done.',true);return true}return false}
 function backupPending(){if(DB.meta.pendingBackup&&!isDev()){toast('Backup after Day End ('+fmtDate(DB.meta.pendingBackup)+') is not confirmed yet. Take the backup from Backup & day end first.',true);return true}return false}
-function guard(...dates){if(backupPending())return false;if(dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. New entries can only be made after this date.',true);return false}return true}
+function guard(...dates){if(overdueBlock()||backupPending())return false;if(dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. New entries can only be made after this date.',true);return false}return true}
 
 /* edit/delete of an entry on a closed date: admin only */
-function guardEdit(...dates){if(backupPending())return false;if(!isAdmin()&&dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. Only admin can edit or delete entries on or before this date.',true);return false}return true}
+function guardEdit(...dates){if(overdueBlock()||backupPending())return false;if(!isAdmin()&&dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. Only admin can edit or delete entries on or before this date.',true);return false}return true}
 
 /* ---------- UI primitives ---------- */
 function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='on'+(bad?' bad':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2800)}
@@ -741,8 +751,11 @@ function countUp(cards,onlyChanged){
 }
 function render(){
   if(!ME)return;if(!canSee(CUR))CUR=MODULES.find(m=>canSee(m.id)).id;
+  const od=dayEndOverdue();
+  if(od){if(canSee('backup'))CUR='backup';else{$('#pageTitle').textContent='System locked';buildNav();$('#view').innerHTML=`<div class="card"><h3>🔒 System locked</h3><p>Day End for <b>${fmtDate(od)}</b> was not done before ${DAYEND_HOUR}:00 AM. No entry can be made until the admin completes Day End.</p><p class="muted">The system will start working again automatically after Day End.</p></div>`;return}}
   const m=MODULES.find(x=>x.id===CUR);$('#pageTitle').textContent=m.label;buildNav();
   const v=$('#view');v.innerHTML='';try{(VIEWS[CUR]||(()=>v.innerHTML='<div class="card">Coming soon</div>'))(v)}catch(e){console.error(e);v.innerHTML=`<div class="card"><b>There was a problem on this screen:</b> ${esc(e.message)}</div>`}
+  if(od)v.insertAdjacentHTML('afterbegin',`<div class="note" style="margin-bottom:12px;border-color:#d9534f">🔒 <b>System locked.</b> Day End for ${fmtDate(od)} was not done before ${DAYEND_HOUR}:00 AM. Only Day End can be done now; the system resumes right after it.</div>`);
   const anim=NAV_ANIM;NAV_ANIM=false;
   if(anim){v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter');clearTimeout(render._t);render._t=setTimeout(()=>v.classList.remove('enter'),900)}
   countUp(v.querySelectorAll('.kpi'),!anim);
@@ -1506,7 +1519,7 @@ function restoreFromFile(){pickFile('.json').then(async f=>{if(!f)return;try{con
 VIEWS.backup=el=>{
   const last=DB.dayEnds[DB.dayEnds.length-1];
   el.innerHTML=`<div class="grid g2"><div class="card"><h3>Backup & restore</h3><p class="muted">Keep at least one backup daily on a computer or Google Drive. All data is stored in this browser.</p><div class="row"><button class="btn pri" id="bkDl">📥 Full backup download</button><button class="btn" id="bkRs">📤 Restore from backup</button></div><p class="small muted mt" id="bkUse"></p><p class="small muted">Last backup: ${DB.meta.lastBackup?esc(new Date(DB.meta.lastBackup).toLocaleString()):'never'}</p></div>
-   <div class="card"><h3>Day end (close the day)</h3><div class="grid">${F('Business date',inp('deD',today(),'date'))}${F('Note',inp('deN'))}</div><p class="small muted mt">${last?'Last day end: '+fmtDate(last.date)+' — '+esc(last.by):'No day end yet.'}</p><p class="small muted">After day end, new entries are allowed only after that date. Entries on or before it can be edited or deleted by admin only. Only the developer can reopen an earlier date.</p>${DB.meta.reopen?`<div class="note" style="border-color:#e0b25a;background:#fdf6e7">🔓 Developer reopened <b>${fmtDate(DB.meta.reopen.from)}</b> onwards (was closed up to ${fmtDate(DB.meta.reopen.prevClosed)}). Make the missing entries, then do Day End again for <b>${fmtDate(DB.meta.reopen.prevClosed)}</b> or later. Reason: ${esc(DB.meta.reopen.reason)}</div>`:''}${DB.meta.pendingBackup?`<div class="note" style="border-color:#d9534f">⛔ Backup after Day End (${fmtDate(DB.meta.pendingBackup)}) is not confirmed. New entries are blocked until you take the backup.</div>`:''}<div class="row mt"><button class="btn pri" id="deGo">🔒 Day end + backup</button>${last&&isDev()?'<button class="btn bad" id="deOpen">🔓 Move day end back (developer)</button>':''}</div></div></div>
+   <div class="card"><h3>Day end (close the day)</h3><div class="grid">${F('Business date',inp('deD',dayEndOverdue()?addDays(today(),new Date().getHours()>=DAYEND_HOUR?-1:-2):today(),'date'))}${F('Note',inp('deN'))}</div><p class="small muted mt">${last?'Last day end: '+fmtDate(last.date)+' — '+esc(last.by):'No day end yet.'}</p><p class="small muted">After day end, new entries are allowed only after that date. Entries on or before it can be edited or deleted by admin only. Only the developer can reopen an earlier date.</p>${DB.meta.reopen?`<div class="note" style="border-color:#e0b25a;background:#fdf6e7">🔓 Developer reopened <b>${fmtDate(DB.meta.reopen.from)}</b> onwards (was closed up to ${fmtDate(DB.meta.reopen.prevClosed)}). Make the missing entries, then do Day End again for <b>${fmtDate(DB.meta.reopen.prevClosed)}</b> or later. Reason: ${esc(DB.meta.reopen.reason)}</div>`:''}${DB.meta.pendingBackup?`<div class="note" style="border-color:#d9534f">⛔ Backup after Day End (${fmtDate(DB.meta.pendingBackup)}) is not confirmed. New entries are blocked until you take the backup.</div>`:''}<div class="row mt"><button class="btn pri" id="deGo">🔒 Day end + backup</button>${last&&isDev()?'<button class="btn bad" id="deOpen">🔓 Move day end back (developer)</button>':''}</div></div></div>
    <div class="card"><h3>Day end history</h3>${table([{t:'Date'},{t:'By'},{t:'Time'},{t:'Sales',n:1},{t:'Recovery',n:1},{t:'Expenses',n:1},{t:'Cash + bank',n:1},{t:'Note'}],DB.dayEnds.slice().reverse().map(d=>[fmtDate(d.date),esc(d.by),esc(d.at),fmt(d.sales),fmt(d.recovery),fmt(d.exp),fmt(d.cash),esc(d.note||'')]))}</div>`;
   $('#bkDl').onclick=()=>{DB.meta.lastBackup=Date.now();delete DB.meta.pendingBackup;downloadJSON(DB,backupName());log('Backup','Downloaded');save(true);render()};
   if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(e=>{const u=$('#bkUse');if(u)u.textContent='Data size: '+fmt(JSON.stringify(DB).length/1048576)+' MB • Browser storage used: '+fmt((e.usage||0)/1048576)+' MB / '+fmt((e.quota||0)/1048576)+' MB'});$('#bkRs').onclick=restoreFromFile;
