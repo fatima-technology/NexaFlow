@@ -1534,9 +1534,7 @@ function buildNav(){
   Object.keys(groups).forEach(g=>{if(!(g in NAV_GROUPS_OPEN))NAV_GROUPS_OPEN[g]=g===activeGroup;});
   // Keep the active screen's group open after navigation; other groups remain user-toggleable.
   if(activeGroup)NAV_GROUPS_OPEN[activeGroup]=true;
-  $('#nav').innerHTML=Object.entries(groups).map(([g,ms])=>{const open=!!NAV_GROUPS_OPEN[g];
-    if(ms.length===1){const m=ms[0];return `<div class="nav-group single"><button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button></div>`}
-    return `<div class="nav-group${open?'':' closed'}" data-nav-group="${esc(g)}"><span><button type="button" class="nav-group-toggle" data-toggle-group="${esc(g)}" aria-expanded="${open}"><span>${esc(g)}</span><span class="nav-chevron">▾</span></button></span><div class="nav-items">${ms.map(m=>`<button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button>`).join('')}</div></div>`}).join('');
+  $('#nav').innerHTML=Object.entries(groups).map(([g,ms])=>{const open=!!NAV_GROUPS_OPEN[g];return `<div class="nav-group${open?'':' closed'}" data-nav-group="${esc(g)}"><span><button type="button" class="nav-group-toggle" data-toggle-group="${esc(g)}" aria-expanded="${open}"><span>${esc(g)}</span><span class="nav-chevron">▾</span></button></span><div class="nav-items">${ms.map(m=>m.id==='reports'?Object.entries(REPORTS).map(([k,r])=>`<button class="nav-item${CUR==='reports'&&RP_CUR===k?' on':''}" data-go="reports" data-rp-go="${k}"><i>${m.icon}</i>${esc(r.t)}</button>`).join(''):`<button class="nav-item${m.id===CUR?' on':''}" data-go="${m.id}"><i>${m.icon}</i>${esc(m.label)}</button>`).join('')}</div></div>`}).join('');
   const prefs={booker:['dashboard','pos','orderSync','recovery'],supplyman:['dashboard','collection','help'],kpo:['dashboard','pos','invoices','collection']}[ME.role]||['dashboard','pos','invoices','reports'];
   const bn=prefs.filter(canSee).slice(0,4).map(id=>MODULES.find(m=>m.id===id));
   $('#bottomNav').style.gridTemplateColumns=`repeat(${bn.length+1},1fr)`;
@@ -1584,7 +1582,7 @@ document.addEventListener('click',e=>{
     if(group){group.classList.toggle('closed',!NAV_GROUPS_OPEN[name]);groupToggle.setAttribute('aria-expanded',String(NAV_GROUPS_OPEN[name]));}
     return;
   }
-  const g=e.target.closest('[data-go]');if(g){go(g.dataset.go);return}
+  const g=e.target.closest('[data-go]');if(g){if(g.dataset.rpGo)RP_CUR=g.dataset.rpGo;go(g.dataset.go);return}
   if(e.target.closest('[data-menu]')||e.target.closest('#menuBtn')){document.body.classList.toggle('drawer');return}
   if(e.target.closest('#scrim')){document.body.classList.remove('drawer');return}
   if(e.target.closest('#userBtn')){$('#userMenu').classList.toggle('on');return}
@@ -2595,10 +2593,11 @@ Object.entries(REPORTS).forEach(([key, report])=>{
   const printKey='report_'+key;
   PRINT_TYPES[printKey]={label:'Report — '+report.t,title:report.t.toUpperCase(),paper:'A4'};
 });
+let RP_CUR='daily';
 VIEWS.reports=el=>{
   el.innerHTML=`<div class="reports-layout"><aside class="reports-list" aria-label="Reports list"><div class="reports-list-title">Reports</div>${Object.entries(REPORTS).map(([k,r],i)=>`<button data-rp="${k}" class="reports-choice ${i===0?'on':''}">${esc(r.t)}</button>`).join('')}</aside><div class="reports-content"><div id="rpO"></div></div></div>`;
-  const show=k=>{$$('[data-rp]').forEach(b=>b.classList.toggle('on',b.dataset.rp===k));const r=REPORTS[k];reportBlock($('#rpO'),{title:r.t,printType:'report_'+k,filters:r.f?r.f():'',build:r.b,after:r.a})};
-  $$('[data-rp]').forEach(b=>b.onclick=()=>show(b.dataset.rp));show('daily');
+  const show=k=>{RP_CUR=k;$$('[data-rp]').forEach(b=>b.classList.toggle('on',b.dataset.rp===k));$$('#nav [data-rp-go]').forEach(b=>b.classList.toggle('on',b.dataset.rpGo===k));const r=REPORTS[k];reportBlock($('#rpO'),{title:r.t,printType:'report_'+k,filters:r.f?r.f():'',build:r.b,after:r.a})};
+  $$('[data-rp]').forEach(b=>b.onclick=()=>show(b.dataset.rp));show(REPORTS[RP_CUR]?RP_CUR:'daily');
 };
 /* =====================================================================
    STORE MANAGER STOCK MOVEMENT REPORTS
