@@ -221,7 +221,7 @@ function tickClock(){const d=new Date();const c=$('#bizDate');
   if(c)c.innerHTML=`<span class="cd">${DAYS[d.getDay()].slice(0,3)}<span class="cdt">, ${fmtDate(dstr(d))} •</span></span> <span class="ct">${timeText(d,true)}</span>`;
   const w=$('#wClock');if(w)w.textContent=timeText(d,true);
   const day=dstr(d);if(ME&&tickClock.day&&tickClock.day!==day&&CUR==='dashboard')render();tickClock.day=day;
-  if(ME&&(!tickClock.od||Date.now()-tickClock.od>10000)){tickClock.od=Date.now();const o=!!dayEndOverdue();if(o!==tickClock.lock){const first=tickClock.lock===undefined;tickClock.lock=o;if(!first)render()}}
+  if(ME&&(!tickClock.od||Date.now()-tickClock.od>10000)){tickClock.od=Date.now();const L=lockState();const k=L?L.type+(L.date||L.name):'';if(k!==tickClock.lock){const first=tickClock.lock===undefined;tickClock.lock=k;if(!first)render()}}
 }
 /* dashboard refreshes itself every 30 seconds (only when nothing is open and the tab is visible) */
 let LIVE_AT=null;
@@ -284,13 +284,22 @@ function lastClosed(){return DB.dayEnds.reduce((m,d)=>d.date>m?d.date:m,'')}
 function isLocked(date){const c=lastClosed();return !!c&&!!date&&String(date).slice(0,10)<=c&&!isDev()}
 /* Day End deadline: a day with entries must be closed by 10:00 AM next day, after that only the Day End process works (developer exempt) */
 const DAYEND_HOUR=10;
+/* holidays: weekly off days and date ranges. A holiday has no Day End deadline and can optionally close the system (developer exempt) */
+function holidayOf(date){const H=DB.meta.holidays;if(!H||!date)return null;const dow=new Date(date+'T00:00:00').getDay();
+  if((H.weekly||[]).some(x=>x.dow===dow&&date>=(x.from||'')))return{name:'Weekly off',close:!!H.weeklyClose};
+  const r=(H.ranges||[]).find(x=>date>=x.from&&date<=x.to);return r?{name:r.name||'Holiday',close:!!r.close}:null}
+/* deadline of a day = 10:00 AM of the next working day */
+function dayEndDeadline(x){let n=addDays(x,1),i=0;while(holidayOf(n)&&i++<60)n=addDays(n,1);return n}
 function dayEndOverdue(){if(!ME||isDev())return '';
-  const now=new Date();const t=dstr(now);const cutoff=addDays(t,now.getHours()>=DAYEND_HOUR?-1:-2);const lc=lastClosed();
-  if(lc>=cutoff)return '';
+  const now=new Date(),t=dstr(now),late=now.getHours()>=DAYEND_HOUR,lc=lastClosed();
   const lists=[DB.invoices,DB.recoveries,DB.collections,DB.expenses,DB.purchases,DB.returns,DB.supplierPayments,DB.transfers,DB.staffAdv,DB.investorTxns];
-  let first='';for(const L of lists)for(const x of (L||[])){const d=String(x.date||'').slice(0,10);if(d&&d>lc&&d<=cutoff&&(!first||d<first))first=d}
+  const seen=new Set();let first='';
+  for(const L of lists)for(const x of (L||[])){const d=String(x.date||'').slice(0,10);if(!d||d<=lc||d>=t||seen.has(d))continue;seen.add(d);
+    if(holidayOf(d))continue;const dl=dayEndDeadline(d);if((dl<t||(dl===t&&late))&&(!first||d<first))first=d}
   return first}
-function overdueBlock(){const o=dayEndOverdue();if(o){toast('System is locked: Day End for '+fmtDate(o)+' is pending. Only Day End can be done.',true);return true}return false}
+function lockState(){if(!ME||isDev())return null;const h=holidayOf(today());if(h&&h.close)return{type:'closed',name:h.name};const o=dayEndOverdue();return o?{type:'dayend',date:o}:null}
+function lockText(L){return L.type==='closed'?'The system is closed today ('+L.name+'). No entry can be made.':'Day End for '+fmtDate(L.date)+' was not done before '+DAYEND_HOUR+':00 AM. Only Day End can be done now; the system resumes right after it.'}
+function overdueBlock(){const L=lockState();if(L){toast(L.type==='closed'?'System is closed today ('+L.name+').':'System is locked: Day End for '+fmtDate(L.date)+' is pending. Only Day End can be done.',true);return true}return false}
 function backupPending(){if(DB.meta.pendingBackup&&!isDev()){toast('Backup after Day End ('+fmtDate(DB.meta.pendingBackup)+') is not confirmed yet. Take the backup from Backup & day end first.',true);return true}return false}
 function guard(...dates){if(overdueBlock()||backupPending())return false;if(dates.some(isLocked)){toast('Day end is done up to '+fmtDate(lastClosed())+'. New entries can only be made after this date.',true);return false}return true}
 
@@ -751,11 +760,11 @@ function countUp(cards,onlyChanged){
 }
 function render(){
   if(!ME)return;if(!canSee(CUR))CUR=MODULES.find(m=>canSee(m.id)).id;
-  const od=dayEndOverdue();
-  if(od){if(canSee('backup'))CUR='backup';else{$('#pageTitle').textContent='System locked';buildNav();$('#view').innerHTML=`<div class="card"><h3>🔒 System locked</h3><p>Day End for <b>${fmtDate(od)}</b> was not done before ${DAYEND_HOUR}:00 AM. No entry can be made until the admin completes Day End.</p><p class="muted">The system will start working again automatically after Day End.</p></div>`;return}}
+  const od=lockState();
+  if(od){if(canSee('backup'))CUR='backup';else{$('#pageTitle').textContent='System locked';buildNav();$('#view').innerHTML=`<div class="card"><h3>🔒 System ${od.type==='closed'?'closed':'locked'}</h3><p>${esc(lockText(od))}</p><p class="muted">The system will start working again automatically${od.type==='closed'?' after the holiday':' after Day End'}.</p></div>`;return}}
   const m=MODULES.find(x=>x.id===CUR);$('#pageTitle').textContent=m.label;buildNav();
   const v=$('#view');v.innerHTML='';try{(VIEWS[CUR]||(()=>v.innerHTML='<div class="card">Coming soon</div>'))(v)}catch(e){console.error(e);v.innerHTML=`<div class="card"><b>There was a problem on this screen:</b> ${esc(e.message)}</div>`}
-  if(od)v.insertAdjacentHTML('afterbegin',`<div class="note" style="margin-bottom:12px;border-color:#d9534f">🔒 <b>System locked.</b> Day End for ${fmtDate(od)} was not done before ${DAYEND_HOUR}:00 AM. Only Day End can be done now; the system resumes right after it.</div>`);
+  if(od)v.insertAdjacentHTML('afterbegin',`<div class="note" style="margin-bottom:12px;border-color:#d9534f">🔒 <b>System ${od.type==='closed'?'closed':'locked'}.</b> ${esc(lockText(od))}</div>`);
   const anim=NAV_ANIM;NAV_ANIM=false;
   if(anim){v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter');clearTimeout(render._t);render._t=setTimeout(()=>v.classList.remove('enter'),900)}
   countUp(v.querySelectorAll('.kpi'),!anim);
@@ -1519,7 +1528,7 @@ function restoreFromFile(){pickFile('.json').then(async f=>{if(!f)return;try{con
 VIEWS.backup=el=>{
   const last=DB.dayEnds[DB.dayEnds.length-1];
   el.innerHTML=`<div class="grid g2"><div class="card"><h3>Backup & restore</h3><p class="muted">Keep at least one backup daily on a computer or Google Drive. All data is stored in this browser.</p><div class="row"><button class="btn pri" id="bkDl">📥 Full backup download</button><button class="btn" id="bkRs">📤 Restore from backup</button></div><p class="small muted mt" id="bkUse"></p><p class="small muted">Last backup: ${DB.meta.lastBackup?esc(new Date(DB.meta.lastBackup).toLocaleString()):'never'}</p></div>
-   <div class="card"><h3>Day end (close the day)</h3><div class="grid">${F('Business date',inp('deD',dayEndOverdue()?addDays(today(),new Date().getHours()>=DAYEND_HOUR?-1:-2):today(),'date'))}${F('Note',inp('deN'))}</div><p class="small muted mt">${last?'Last day end: '+fmtDate(last.date)+' — '+esc(last.by):'No day end yet.'}</p><p class="small muted">After day end, new entries are allowed only after that date. Entries on or before it can be edited or deleted by admin only. Only the developer can reopen an earlier date.</p>${DB.meta.reopen?`<div class="note" style="border-color:#e0b25a;background:#fdf6e7">🔓 Developer reopened <b>${fmtDate(DB.meta.reopen.from)}</b> onwards (was closed up to ${fmtDate(DB.meta.reopen.prevClosed)}). Make the missing entries, then do Day End again for <b>${fmtDate(DB.meta.reopen.prevClosed)}</b> or later. Reason: ${esc(DB.meta.reopen.reason)}</div>`:''}${DB.meta.pendingBackup?`<div class="note" style="border-color:#d9534f">⛔ Backup after Day End (${fmtDate(DB.meta.pendingBackup)}) is not confirmed. New entries are blocked until you take the backup.</div>`:''}<div class="row mt"><button class="btn pri" id="deGo">🔒 Day end + backup</button>${last&&isDev()?'<button class="btn bad" id="deOpen">🔓 Move day end back (developer)</button>':''}</div></div></div>
+   <div class="card"><h3>Day end (close the day)</h3><div class="grid">${F('Business date',inp('deD',dayEndOverdue()?addDays(today(),-1):today(),'date'))}${F('Note',inp('deN'))}</div><p class="small muted mt">${last?'Last day end: '+fmtDate(last.date)+' — '+esc(last.by):'No day end yet.'}</p><p class="small muted">After day end, new entries are allowed only after that date. Entries on or before it can be edited or deleted by admin only. Only the developer can reopen an earlier date.</p>${DB.meta.reopen?`<div class="note" style="border-color:#e0b25a;background:#fdf6e7">🔓 Developer reopened <b>${fmtDate(DB.meta.reopen.from)}</b> onwards (was closed up to ${fmtDate(DB.meta.reopen.prevClosed)}). Make the missing entries, then do Day End again for <b>${fmtDate(DB.meta.reopen.prevClosed)}</b> or later. Reason: ${esc(DB.meta.reopen.reason)}</div>`:''}${DB.meta.pendingBackup?`<div class="note" style="border-color:#d9534f">⛔ Backup after Day End (${fmtDate(DB.meta.pendingBackup)}) is not confirmed. New entries are blocked until you take the backup.</div>`:''}<div class="row mt"><button class="btn pri" id="deGo">🔒 Day end + backup</button>${last&&isDev()?'<button class="btn bad" id="deOpen">🔓 Move day end back (developer)</button>':''}</div></div></div>
    <div class="card"><h3>Day end history</h3>${table([{t:'Date'},{t:'By'},{t:'Time'},{t:'Sales',n:1},{t:'Recovery',n:1},{t:'Expenses',n:1},{t:'Cash + bank',n:1},{t:'Note'}],DB.dayEnds.slice().reverse().map(d=>[fmtDate(d.date),esc(d.by),esc(d.at),fmt(d.sales),fmt(d.recovery),fmt(d.exp),fmt(d.cash),esc(d.note||'')]))}</div>`;
   $('#bkDl').onclick=()=>{DB.meta.lastBackup=Date.now();delete DB.meta.pendingBackup;downloadJSON(DB,backupName());log('Backup','Downloaded');save(true);render()};
   if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(e=>{const u=$('#bkUse');if(u)u.textContent='Data size: '+fmt(JSON.stringify(DB).length/1048576)+' MB • Browser storage used: '+fmt((e.usage||0)/1048576)+' MB / '+fmt((e.quota||0)/1048576)+' MB'});$('#bkRs').onclick=restoreFromFile;
@@ -1532,7 +1541,28 @@ VIEWS.backup=el=>{
       DB.meta.lastBackup=Date.now();downloadJSON(DB,backupName('before_reopen_'+f));
       const prev=DB.meta.reopen?DB.meta.reopen.prevClosed:l.date;DB.dayEnds=DB.dayEnds.filter(x=>x.date<f);DB.meta.reopen={from:f,prevClosed:prev>l.date?prev:l.date,by:ME.username,at:nowStamp(),reason:V('deWhy')};
       log('Backup','Day end moved back',f,V('deWhy')+' (was closed up to '+l.date+')');save();closeModal();toast('Day end moved back. Admin can now enter entries from '+fmtDate(f)+'.');render()}}])};
+  holidayUI(el);
 };
+
+/* holidays & closed days (weekly off + date ranges) */
+function holidayUI(el){
+  const H=DB.meta.holidays=DB.meta.holidays||{weekly:[],ranges:[],weeklyClose:false};H.weekly=H.weekly||[];H.ranges=H.ranges||[];
+  const dn=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];const tmr=addDays(today(),1);const canDel=r=>isDev()||r.from>today();
+  el.insertAdjacentHTML('beforeend',`<div class="card" id="hdCard"><h3>Holidays & closed days</h3><p class="small muted">On a holiday no Day End is needed and the ${DAYEND_HOUR}:00 AM lock does not apply. If "Close system" is ticked, nobody except the developer can make entries on that day. Admin can add holidays only from tomorrow onwards.</p>
+   <h4>Weekly off</h4><div class="row">${dn.map((n,i)=>`<label style="margin-right:12px"><input type="checkbox" data-wd="${i}" ${H.weekly.some(x=>x.dow===i)?'checked':''}> ${n}</label>`).join('')}</div>
+   <div class="row mt"><label><input type="checkbox" id="hdWC" ${H.weeklyClose?'checked':''}> Close system on weekly off day</label><button class="btn pri" id="hdWS">Save weekly off</button></div>
+   <h4 class="mt">Holiday dates (Eid etc.)</h4><div class="grid">${F('Name',inp('hdN'))}${F('From',inp('hdF',tmr,'date'))}${F('To',inp('hdT',tmr,'date'))}</div>
+   <div class="row mt"><label><input type="checkbox" id="hdC" checked> Close system on these days</label><button class="btn pri" id="hdAdd">Add holiday</button></div>
+   ${table([{t:'Name'},{t:'From'},{t:'To'},{t:'System'},{t:''}],H.ranges.slice().sort((a,b)=>a.from<b.from?1:-1).map(r=>[esc(r.name||'Holiday'),fmtDate(r.from),fmtDate(r.to),r.close?'Closed':'Open (no Day End needed)',canDel(r)?`<button class="btn sm bad" data-hdd="${r.id}">🗑️</button>`:'']))}</div>`);
+  $('#hdWS').onclick=()=>{const on=$$('[data-wd]:checked').map(c=>N(c.dataset.wd));
+    H.weekly=on.map(d=>H.weekly.find(x=>x.dow===d)||{dow:d,from:isDev()?'':tmr});H.weeklyClose=$('#hdWC').checked;
+    log('Holidays','Weekly off saved',on.map(d=>dn[d]).join(', ')||'none',H.weeklyClose?'system closed':'system open');save();toast('Weekly off saved.');render()};
+  $('#hdAdd').onclick=()=>{const f=V('hdF'),t=V('hdT');if(!f||!t||t<f)return toast('Choose a valid From and To date.',true);
+    if(!isDev()&&f<=today())return toast('Admin can add holidays only from tomorrow onwards.',true);
+    H.ranges.push({id:uid(),name:V('hdN')||'Holiday',from:f,to:t,close:$('#hdC').checked});log('Holidays','Holiday added',V('hdN')||'Holiday',f+' to '+t+($('#hdC').checked?' (system closed)':''));save();toast('Holiday added.');render()};
+  $$('[data-hdd]').forEach(b=>b.onclick=()=>{const r=H.ranges.find(x=>x.id===b.dataset.hdd);if(!r||!canDel(r))return toast('Only the developer can remove a holiday that has already started.',true);
+    confirmBox('Delete this holiday?',()=>{H.ranges=H.ranges.filter(x=>x.id!==r.id);log('Holidays','Holiday deleted',r.name,r.from+' to '+r.to);save();render()})});
+}
 
 /* =====================================================================
    USER MANUAL (role ke hisab se)
