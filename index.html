@@ -680,6 +680,9 @@ body.has-netbar .top{top:26px}
 #login::before,#login::after{content:none!important;display:none!important}
 #login .nl-page{position:relative;width:100%;min-height:100%;display:flex;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#f1f1f1}
 #login .nl-page *{box-sizing:border-box}
+#nlChart{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.5}
+#login .nl-page>.nl-box,#login .nl-page>.nl-info{position:relative;z-index:1}
+#login .nl-page>.nl-dots{z-index:2}
 .nl-dots{position:absolute;top:20px;right:20px;display:flex;gap:10px}
 .nl-dot{width:22px;height:22px;min-height:0;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;transition:transform .2s}
 .nl-dot:hover{transform:scale(1.12)}
@@ -784,6 +787,7 @@ body.has-netbar .top{top:26px}
 <div id="login">
 <!-- ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : HTML START ===================== -->
 <div class="nl-page">
+  <canvas id="nlChart" aria-hidden="true"></canvas>
   <div class="nl-dots">
     <button type="button" class="nl-dot active" data-c="#e8552d" data-g="rgba(232,85,45,.55)" style="background:#e8552d" aria-label="Orange glow"></button>
     <button type="button" class="nl-dot" data-c="#2f8cff" data-g="rgba(47,140,255,.55)" style="background:#2f8cff" aria-label="Neon blue"></button>
@@ -3430,6 +3434,35 @@ if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addE
   }, 100);
 })();
 /* ===================== nexaFlow LOGIN SWITCH (neon -> lamp) : JS END ===================== */
+</script>
+<script>
+/* login background: faint animated trading-chart candles + line (canvas, ~30fps, pauses when hidden) */
+(function(){
+  const cv=document.getElementById('nlChart');if(!cv||!cv.getContext)return;
+  const cx=cv.getContext('2d'),reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+  const STEP=26,MS=900;let W=0,H=0,candles=[],price=50,last=0,t0=0,raf=0;
+  const mk=()=>{const o=price;price=Math.max(12,Math.min(88,price+(Math.random()-.48)*9));const c=price;
+    return{o,c,h:Math.max(o,c)+Math.random()*4,l:Math.min(o,c)-Math.random()*4}};
+  function size(){const r=cv.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);W=r.width;H=r.height;cv.width=W*d;cv.height=H*d;cx.setTransform(d,0,0,d,0,0);
+    const n=Math.ceil(W/STEP)+3;while(candles.length<n)candles.unshift(mk());while(candles.length>n)candles.shift()}
+  const y=v=>H*.78-(v/100)*H*.56;
+  function draw(now){
+    raf=requestAnimationFrame(draw);
+    if(now-last<33||document.hidden||!cv.offsetParent)return;last=now;
+    if(!t0)t0=now;let f=(now-t0)/MS;if(f>=1){t0=now;f=0;candles.push(mk());candles.shift()}
+    if(reduce)f=0;
+    const col=getComputedStyle(document.documentElement).getPropertyValue('--nl-c').trim()||'#e8552d';
+    cx.clearRect(0,0,W,H);cx.lineWidth=1;cx.strokeStyle='rgba(255,255,255,.05)';cx.beginPath();
+    for(let i=1;i<6;i++){const gy=H*i/6;cx.moveTo(0,gy);cx.lineTo(W,gy)}cx.stroke();
+    const off=-f*STEP;
+    candles.forEach((k,i)=>{const x=i*STEP+off+STEP/2,up=k.c>=k.o;
+      cx.strokeStyle=cx.fillStyle=up?'rgba(20,184,132,.8)':'rgba(239,83,80,.75)';cx.lineWidth=1.2;
+      cx.beginPath();cx.moveTo(x,y(k.h));cx.lineTo(x,y(k.l));cx.stroke();
+      const top=y(Math.max(k.o,k.c)),bh=Math.max(Math.abs(y(k.o)-y(k.c)),2);cx.fillRect(x-5,top,10,bh)});
+    cx.strokeStyle=col;cx.lineWidth=2;cx.shadowColor=col;cx.shadowBlur=10;cx.beginPath();
+    candles.forEach((k,i)=>{const x=i*STEP+off+STEP/2,yy=y(k.c-8);i?cx.lineTo(x,yy):cx.moveTo(x,yy)});cx.stroke();cx.shadowBlur=0}
+  size();addEventListener('resize',size);raf=requestAnimationFrame(draw);
+})();
 </script>
 </body>
 </html>
