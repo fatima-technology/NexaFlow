@@ -1883,7 +1883,15 @@ const dateRange=(p,from,to)=>F('From',inp(p+'From',from||thisMonth()+'-01','date
    DASHBOARD
    ===================================================================== */
 const LIVE_STRIP=()=>{LIVE_AT=new Date();return`<div class="live"><span>Figures refresh automatically • last updated ${timeText(LIVE_AT,true)}</span></div>`};
-VIEWS.dashboard=el=>{VIEWS._dash(el);el.insertAdjacentHTML('afterbegin',LIVE_STRIP())};
+const SALES7=()=>{
+  const r=ME.role;let inv=activeInv();
+  if(r==='booker')inv=inv.filter(i=>i.bookerId===ME.id);else if(r==='supplyman')inv=inv.filter(i=>i.supplymanId===ME.id);
+  const days=[];for(let k=6;k>=0;k--){const d=new Date();d.setDate(d.getDate()-k);days.push(dstr(d))}
+  const vals=days.map(d=>sum(inv.filter(i=>i.date===d),i=>i.net));const max=Math.max(...vals,1);
+  const bw=60,W=bw*7;
+  const bars=vals.map((v,i)=>{const h=Math.round(v/max*120);return`<g><rect x="${i*bw+10}" y="${140-h}" width="${bw-20}" height="${h}" rx="5" fill="var(--accent,#3949ab)" opacity=".85"><title>${esc(days[i])}: ${esc(money(v))}</title></rect><text x="${i*bw+bw/2}" y="156" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">${esc(days[i].slice(5))}</text></g>`}).join('');
+  return`<div class="card"><h3>${esc(S().companyName||S().appName||'Company')} — last 7 days sales</h3><div class="muted small">Total: ${esc(money(sum(vals,x=>x)))}</div><svg viewBox="0 0 ${W} 164" style="width:100%;max-height:200px" role="img" aria-label="Sales for the last 7 days">${bars}</svg></div>`};
+VIEWS.dashboard=el=>{VIEWS._dash(el);el.insertAdjacentHTML('afterbegin',LIVE_STRIP()+SALES7())};
 VIEWS._dash=el=>{
   const t=today();
   if(ME.role==='booker'||ME.role==='supplyman'){
