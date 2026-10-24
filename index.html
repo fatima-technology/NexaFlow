@@ -761,6 +761,21 @@ body.has-netbar .top{top:26px}
 .lamp-brand{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:600;margin-bottom:4px}
 .lamp-brand-icon{width:40px;height:40px;border-radius:10px;background:var(--lamp-c);display:flex;align-items:center;justify-content:center;transition:background .5s}
 .lamp-brand span{color:var(--lamp-c);transition:color .5s}
+.lamp-brand{gap:12px;margin-bottom:10px}
+.lamp-brand-icon{width:44px;height:44px;border-radius:12px;background:none;box-shadow:0 4px 16px color-mix(in srgb,var(--lamp-c) 45%,transparent)}
+.lamp-wm{display:flex;flex-direction:column;line-height:1.1}
+.lamp-wm b{font-size:27px;font-weight:800;letter-spacing:-.6px;color:#fff}
+.lamp-wm b span{font-weight:300;letter-spacing:-.2px}
+.lamp-wm small{margin-top:4px;font-size:10px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:#7d8491}
+.lamp-sub{display:flex;align-items:center;gap:8px}
+.lamp-sub i{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:var(--lamp-c);background:color-mix(in srgb,var(--lamp-c) 14%,transparent);border:1px solid color-mix(in srgb,var(--lamp-c) 40%,transparent)}
+.lamp-card{background:linear-gradient(160deg,#1d2029,#16181f);box-shadow:0 20px 50px rgba(0,0,0,.45)}
+.lamp-scene{background:radial-gradient(ellipse at 25% 40%,#1c1d26 0%,var(--lamp-bg) 65%),repeating-linear-gradient(0deg,transparent 0 47px,rgba(255,255,255,.025) 47px 48px),repeating-linear-gradient(90deg,transparent 0 47px,rgba(255,255,255,.025) 47px 48px)}
+.lamp-input input{transition:border-color .25s,box-shadow .25s,background .25s}
+.lamp-input input:focus{background:#0f1116}
+.lamp-eye{font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px}
+.lamp-eye:hover{color:var(--lamp-c)}
+.lamp-btn{background:linear-gradient(135deg,var(--lamp-c),color-mix(in srgb,var(--lamp-c) 70%,#000));color:#fff;letter-spacing:.02em;box-shadow:0 8px 20px color-mix(in srgb,var(--lamp-c) 35%,transparent)}
 .lamp-sub{font-size:13px;color:var(--lamp-muted);margin:0 0 1.5rem}
 .lamp-field{margin-bottom:1rem}
 .lamp-field label{display:block;font-size:12px;color:#a3a8b2;margin-bottom:6px}
@@ -925,12 +940,10 @@ body.has-netbar .top{top:26px}
 
   <form class="lamp-card" id="lampForm" autocomplete="off" novalidate>
     <div class="lamp-brand">
-      <div class="lamp-brand-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-      </div>
-      nexa<span>Flow</span>
+      <div class="lamp-brand-icon"><svg width="44" height="44" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lpLg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#000" stop-opacity=".2"/></linearGradient></defs><rect width="48" height="48" rx="12" fill="var(--lamp-c)"/><rect width="48" height="48" rx="12" fill="url(#lpLg)"/><path d="M14 34V14l20 20V14" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="34" cy="14" r="3.2" fill="#fff"/></svg></div>
+      <div class="lamp-wm"><b>Nexa<span>Flow</span></b><small>Distribution ERP</small></div>
     </div>
-    <p class="lamp-sub">Developer login</p>
+    <p class="lamp-sub"><i>Developer</i> Secure sign in</p>
 
     <div class="lamp-field">
       <label for="lampUser">Username</label>
