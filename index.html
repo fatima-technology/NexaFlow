@@ -666,11 +666,141 @@ body.mode-night #login .lg-mini-d span{background:#DCE8EE}body.mode-night #login
 .netbar .nb-btn:disabled{opacity:.6;cursor:progress}
 body.has-netbar .top{top:26px}
 </style>
+<style>
+/* ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : CSS START ===================== */
+:root{
+  --nl-c:#e8552d;                      /* theme rang */
+  --nl-g:rgba(232,85,45,.55);          /* glow */
+  --nl-speed:1.4s;                     /* slide ki raftar */
+  --nl-gap:.3s;                        /* har field ke beech ka waqfa */
+}
+/* purani login screen ka design chhupa do (uske ids app ke liye maujood rehte hain) */
+#login>.login-shell{display:none!important}
+#login{background:#0f1117!important;padding:0!important;overflow:auto}
+#login::before,#login::after{content:none!important;display:none!important}
+#login .nl-page{position:relative;width:100%;min-height:100%;display:flex;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#f1f1f1}
+#login .nl-page *{box-sizing:border-box}
+.nl-dots{position:absolute;top:20px;right:20px;display:flex;gap:10px}
+.nl-dot{width:22px;height:22px;min-height:0;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;transition:transform .2s}
+.nl-dot:hover{transform:scale(1.12)}
+.nl-dot.active{border-color:#fff}
+.nl-box{width:100%;max-width:380px;overflow:hidden;border-radius:16px;padding:2rem 1.75rem;background:#161a22;border:1.5px solid var(--nl-c);box-shadow:0 0 22px var(--nl-g);transition:border-color .5s,box-shadow .5s}
+.nl-anim{transform:translateX(120%);opacity:0;filter:blur(10px);
+  transition:transform var(--nl-speed) cubic-bezier(.22,1,.36,1),opacity var(--nl-speed) ease,filter var(--nl-speed) ease}
+.nl-box.show .nl-anim{transform:translateX(0);opacity:1;filter:blur(0);transition-delay:calc(.15s + var(--nl-gap) * var(--i))}
+.nl-brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:600;margin-bottom:4px;color:#f1f1f1;user-select:none;-webkit-user-select:none;touch-action:manipulation;cursor:default}
+.nl-icon{width:40px;height:40px;border-radius:10px;background:var(--nl-c);display:flex;align-items:center;justify-content:center;transition:background .5s}
+.nl-brand span{color:var(--nl-c);transition:color .5s}
+.nl-sub{font-size:14px;color:#9aa0aa;margin:0 0 1.5rem}
+.nl-field{position:relative;margin-bottom:1.1rem}
+#login .nl-field input{width:100%;height:44px;min-height:0;background:transparent;border:none;border-bottom:1.5px solid #3a3f4b;border-radius:0;box-shadow:none;color:#f1f1f1;padding:0 34px 0 2px;font-size:15px;outline:none;transition:border-color .3s}
+#login .nl-field input:focus{border-bottom-color:var(--nl-c);box-shadow:none;background:transparent}
+#login .nl-field input::placeholder{color:#8a8f99;opacity:1}
+.nl-field svg{position:absolute;right:4px;top:12px}
+.nl-error{min-height:18px;font-size:13px;color:#ff7a7a;margin:0 0 10px}
+.nl-btn{width:100%;height:46px;border:none;border-radius:999px;background:var(--nl-c);color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:background .5s,filter .2s}
+.nl-btn:hover{filter:brightness(1.1)}
+.nl-btn:active{transform:scale(.98)}
+.nl-link{display:block;margin:12px auto 0;border:0;background:none;color:#9aa0aa;font-size:13px;cursor:pointer;padding:6px}
+.nl-link:hover{color:var(--nl-c)}
+.nl-shake{animation:nlShake .4s}
+@keyframes nlShake{0%,100%{margin-left:0}25%{margin-left:-8px}75%{margin-left:8px}}
+/* ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : CSS END ===================== */
+</style>
+<style>
+/* ===================== nexaFlow LAMP LOGIN : CSS START ===================== */
+#lampOverlay{--lamp-c:#f5a524;--lamp-bg:#0e0f14;--lamp-card:#1a1c23;--lamp-border:#2c2f38;--lamp-text:#f1f2f5;--lamp-muted:#8a8f99;
+  position:fixed;inset:0;z-index:58;overflow:auto;background:var(--lamp-bg);color:var(--lamp-text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#lampOverlay *{box-sizing:border-box}
+.lamp-scene{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;gap:3rem;padding:2rem 1.25rem;overflow:hidden;background:radial-gradient(ellipse at 25% 40%,#1a1b22 0%,var(--lamp-bg) 65%)}
+#lampDust{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.lamp-back{position:absolute;top:18px;left:18px;z-index:5;background:none;border:1px solid var(--lamp-border);color:var(--lamp-muted);border-radius:999px;padding:5px 12px;font-size:12px;min-height:0;cursor:pointer}
+.lamp-back:hover{color:var(--lamp-text);border-color:var(--lamp-muted)}
+.lamp-dots{position:absolute;top:20px;right:20px;display:flex;gap:10px;z-index:5}
+.lamp-dot{width:16px;height:16px;min-height:0;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;transition:transform .2s}
+.lamp-dot:hover{transform:scale(1.15)}
+.lamp-dot.active{border-color:#fff}
+.lamp-wrap{position:relative;width:200px;height:340px;flex-shrink:0;z-index:2}
+.lamp-wrap svg{width:100%;height:100%;overflow:visible}
+.lamp-beam{position:absolute;left:105px;top:105px;width:0;height:0;border-left:190px solid transparent;border-right:190px solid transparent;border-top:420px solid var(--lamp-c);opacity:0;transform:rotate(-55deg);transform-origin:top center;filter:blur(18px);transition:opacity 1s ease;pointer-events:none}
+.lamp-on .lamp-beam{opacity:.16}
+.lamp-shade{fill:#2a2c33;transition:fill .5s}
+.lamp-on .lamp-shade{fill:#3b3d46}
+.lamp-bulb{fill:#55575f;transition:fill .4s,filter .4s}
+.lamp-on .lamp-bulb{fill:var(--lamp-c);filter:drop-shadow(0 0 10px var(--lamp-c))}
+.lamp-cord{cursor:pointer}
+.lamp-cord line,.lamp-cord circle{transition:all .18s ease}
+.lamp-cord.pull line{transform:translateY(18px)}
+.lamp-cord.pull circle{transform:translateY(18px)}
+.lamp-card{position:relative;z-index:3;width:100%;max-width:360px;background:var(--lamp-card);border:1px solid var(--lamp-border);border-radius:18px;padding:2rem 1.75rem;opacity:.2;filter:blur(4px);transform:translateY(14px);transition:opacity .9s ease,filter .9s ease,transform .9s ease,border-color .9s,box-shadow .9s}
+.lamp-on .lamp-card{opacity:1;filter:blur(0);transform:none;border-color:var(--lamp-c);box-shadow:0 0 28px color-mix(in srgb,var(--lamp-c) 35%,transparent)}
+.lamp-brand{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:600;margin-bottom:4px}
+.lamp-brand-icon{width:40px;height:40px;border-radius:10px;background:var(--lamp-c);display:flex;align-items:center;justify-content:center;transition:background .5s}
+.lamp-brand span{color:var(--lamp-c);transition:color .5s}
+.lamp-sub{font-size:13px;color:var(--lamp-muted);margin:0 0 1.5rem}
+.lamp-field{margin-bottom:1rem}
+.lamp-field label{display:block;font-size:12px;color:#a3a8b2;margin-bottom:6px}
+.lamp-input{position:relative}
+.lamp-input input{width:100%;height:44px;background:#13151b;border:1px solid #30333c;border-radius:10px;color:var(--lamp-text);font-size:15px;padding:0 42px 0 14px;outline:none;transition:border-color .3s,box-shadow .3s}
+.lamp-input input:focus{border-color:var(--lamp-c);box-shadow:0 0 0 3px color-mix(in srgb,var(--lamp-c) 20%,transparent)}
+.lamp-input input::placeholder{color:#5f646e}
+.lamp-eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--lamp-muted);cursor:pointer;padding:4px;font-size:13px;min-height:0}
+.lamp-error{min-height:18px;font-size:13px;color:#ff7a7a;margin:0 0 10px}
+.lamp-btn{width:100%;height:46px;border:none;border-radius:10px;background:var(--lamp-c);color:#111;font-size:15px;font-weight:600;cursor:pointer;transition:transform .15s,filter .2s,background .5s}
+.lamp-btn:hover{filter:brightness(1.08)}
+.lamp-btn:active{transform:scale(.98)}
+.lamp-foot{text-align:center;font-size:12px;color:#5f646e;margin:1.25rem 0 0}
+.lamp-shake{animation:lampShake .4s}
+.lamp-scene:not(.lamp-on) .lamp-card{pointer-events:none;user-select:none}
+.lamp-scene:not(.lamp-on) .lamp-dot{opacity:.35;cursor:not-allowed}
+.lamp-card input:disabled,.lamp-card button:disabled{cursor:not-allowed}
+.lamp-hint{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);z-index:4;font-size:13px;color:var(--lamp-muted);background:rgba(255,255,255,.04);border:1px solid var(--lamp-border);padding:8px 16px;border-radius:999px;white-space:nowrap;transition:opacity .5s;animation:lampPulse 2s infinite}
+.lamp-on .lamp-hint{opacity:0;pointer-events:none;animation:none}
+@keyframes lampPulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes lampShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+@media (max-width:760px){
+  .lamp-scene{flex-direction:column;gap:0;justify-content:flex-start;padding-top:3.5rem}
+  .lamp-wrap{width:130px;height:220px;margin-left:-40%}
+  .lamp-beam{left:68px;top:68px;border-left-width:140px;border-right-width:140px;border-top-width:320px;transform:rotate(-30deg)}
+  .lamp-card{margin-top:-20px;padding:1.5rem 1.25rem}
+  .lamp-hint{white-space:normal;text-align:center;width:max-content;max-width:88%}
+}
+/* ===================== nexaFlow LAMP LOGIN : CSS END ===================== */
+</style>
 </head>
 <body>
 
 <!-- LOGIN -->
 <div id="login">
+<!-- ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : HTML START ===================== -->
+<div class="nl-page">
+  <div class="nl-dots">
+    <button type="button" class="nl-dot active" data-c="#e8552d" data-g="rgba(232,85,45,.55)" style="background:#e8552d" aria-label="Orange glow"></button>
+    <button type="button" class="nl-dot" data-c="#2f8cff" data-g="rgba(47,140,255,.55)" style="background:#2f8cff" aria-label="Neon blue"></button>
+    <button type="button" class="nl-dot" data-c="#14b884" data-g="rgba(20,184,132,.5)" style="background:#14b884" aria-label="Emerald"></button>
+    <button type="button" class="nl-dot" data-c="#8b5cf6" data-g="rgba(139,92,246,.55)" style="background:#8b5cf6" aria-label="Royal purple"></button>
+  </div>
+
+  <form class="nl-box" id="nlBox" novalidate>
+    <div class="nl-brand nl-anim" id="nlBrand" style="--i:0">
+      <div class="nl-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></div>
+      nexa<span>Flow</span>
+    </div>
+    <p class="nl-sub nl-anim" style="--i:1">Welcome back, login karein</p>
+    <div class="nl-field nl-anim" style="--i:2">
+      <input id="nlUser" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Username">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a8f99" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+    </div>
+    <div class="nl-field nl-anim" style="--i:3">
+      <input id="nlPass" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a8f99" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </div>
+    <p class="nl-error" id="nlError" role="alert"></p>
+    <button type="submit" class="nl-btn nl-anim" id="nlSubmit" style="--i:4">Login</button>
+    <button type="button" class="nl-link nl-anim" id="nlReset" style="--i:5">Forgot / reset password</button>
+  </form>
+</div>
+<!-- ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : HTML END ===================== -->
  <div class="login-shell">
   <section class="login-art" aria-label="NexaFlow">
     <div class="lg-logo"><div class="lg-mini" aria-hidden="true"><span></span><span></span><span class="e"></span><span></span><span class="e"></span><span></span><span></span><span class="y"></span><span></span></div><span class="lg-word" id="loginCo">NexaFlow</span></div>
@@ -725,6 +855,73 @@ body.has-netbar .top{top:26px}
   </main>
  </div>
 </div>
+
+<!-- ===================== nexaFlow LAMP LOGIN : HTML START ===================== -->
+<template id="lampTpl">
+<div class="lamp-scene" id="lampScene">
+  <canvas id="lampDust"></canvas>
+  <button type="button" class="lamp-back" id="lampBack">← Wapas</button>
+
+  <div class="lamp-dots">
+    <button type="button" class="lamp-dot active" data-c="#f5a524" style="background:#f5a524" aria-label="Amber"></button>
+    <button type="button" class="lamp-dot" data-c="#22d3ee" style="background:#22d3ee" aria-label="Cyan"></button>
+    <button type="button" class="lamp-dot" data-c="#f472b6" style="background:#f472b6" aria-label="Pink"></button>
+    <button type="button" class="lamp-dot" data-c="#4ade80" style="background:#4ade80" aria-label="Green"></button>
+    <button type="button" class="lamp-dot" data-c="#a78bfa" style="background:#a78bfa" aria-label="Purple"></button>
+  </div>
+
+  <div class="lamp-wrap">
+    <div class="lamp-beam"></div>
+    <svg viewBox="0 0 200 340">
+      <ellipse cx="60" cy="325" rx="52" ry="10" fill="#1d1e25"/>
+      <rect x="20" y="312" width="80" height="12" rx="6" fill="#2a2c33"/>
+      <line x1="60" y1="315" x2="42" y2="200" stroke="#3a3c44" stroke-width="7" stroke-linecap="round"/>
+      <line x1="42" y1="200" x2="95" y2="100" stroke="#3a3c44" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="42" cy="200" r="9" fill="#4a4c55"/>
+      <circle cx="60" cy="315" r="7" fill="#4a4c55"/>
+      <g transform="rotate(32 95 100)">
+        <path class="lamp-shade" d="M55 102 Q95 40 140 102 Z"/>
+        <ellipse class="lamp-bulb" cx="98" cy="103" rx="20" ry="6"/>
+      </g>
+      <g class="lamp-cord" id="lampCord">
+        <line x1="118" y1="118" x2="124" y2="220" stroke="#8a8c94" stroke-width="2.5"/>
+        <circle cx="124" cy="226" r="8" fill="#c9cbd2"/>
+        <rect x="100" y="118" width="50" height="125" fill="transparent"/>
+      </g>
+    </svg>
+  </div>
+
+  <form class="lamp-card" id="lampForm" autocomplete="off" novalidate>
+    <div class="lamp-brand">
+      <div class="lamp-brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+      </div>
+      nexa<span>Flow</span>
+    </div>
+    <p class="lamp-sub">Developer login</p>
+
+    <div class="lamp-field">
+      <label for="lampUser">Username</label>
+      <div class="lamp-input"><input id="lampUser" type="text" placeholder="Username likhein" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+    </div>
+
+    <div class="lamp-field">
+      <label for="lampPass">Password</label>
+      <div class="lamp-input">
+        <input id="lampPass" type="password" placeholder="Password likhein" autocomplete="off">
+        <button type="button" class="lamp-eye" id="lampEye" aria-label="Password dikhayen">Show</button>
+      </div>
+    </div>
+
+    <p class="lamp-error" id="lampError" role="alert"></p>
+    <button type="submit" class="lamp-btn">Login</button>
+    <p class="lamp-foot">nexaFlow ERP</p>
+  </form>
+
+  <div class="lamp-hint" id="lampHint">Login ke liye lamp ki taar khench kar lamp jalayen</div>
+</div>
+</template>
+<!-- ===================== nexaFlow LAMP LOGIN : HTML END ===================== -->
 
 <div id="loginLoading" aria-live="polite" aria-label="Loading ERP" style="display:none;position:fixed;inset:0;z-index:100;background:var(--side);color:var(--side-head);align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center;padding:24px">
  <div style="width:58px;height:58px;border:4px solid color-mix(in srgb,var(--side-head) 22%,transparent);border-top-color:var(--saffron);border-radius:50%;animation:loginSpin .8s linear infinite"></div>
@@ -968,14 +1165,17 @@ function attendancePunchOut(user){
   rec.outAt=stamp;rec.outTime=stamp.slice(-5);
 }
 
-function doLogin(){
-  const btn=$('#loginBtn');
-  if(!DB||!Array.isArray(DB.users)){$('#loginErr').textContent='System is still loading. Please wait a moment and try again.';return}
-  const u=$('#lu').value.trim().toLowerCase(),p=$('#lp').value;
-  if(!u||!p){$('#loginErr').textContent='Please enter both username and password.';return}
+/* shared login back-end. Normal login (neon screen) never accepts the developer account; developer login (lamp screen) accepts only it.
+   Passwords are never stored in plain text: the typed password is hashed (SHA-256) and compared with the stored hash. */
+function loginCheck(u,p,devOnly){
+  if(!DB||!Array.isArray(DB.users))return 'System is still loading. Please wait a moment and try again.';
+  u=String(u||'').trim().toLowerCase();
+  if(!u||!p)return 'Please enter both username and password.';
   const user=DB.users.find(x=>String(x.username||'').trim().toLowerCase()===u);
-  if(!user||user.pass!==hashPass(u,p)){$('#loginErr').textContent='Username or password is incorrect.';return}
-  if(user.active===false||user.role==='staff'){$('#loginErr').textContent='This account is disabled for login. Please contact the admin.';return}
+  if(!user||(user.role==='developer')!==!!devOnly||user.pass!==hashPass(u,p))return 'Username or password is incorrect.';
+  if(user.active===false||user.role==='staff')return 'This account is disabled for login. Please contact the admin.';
+  return user}
+function loginFinish(user,btn){
   try{
     ME=user;try{sessionStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Session storage unavailable; continuing with in-memory login.',storageErr)}try{localStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Persistent session storage is full; continuing without persistent login.',storageErr)}
     $('#lp').value='';$('#loginErr').textContent='';
@@ -987,6 +1187,23 @@ function doLogin(){
     setTimeout(()=>{ $('#loginLoading').classList.remove('on');if(btn){btn.disabled=false;btn.textContent='Sign in'} },850);
   }catch(err){console.error('Login failed:',err);ME=null;$('#loginLoading').classList.remove('on');$('#loginErr').textContent='Login process encountered a browser storage issue. Your saved ERP data has not been intentionally cleared. Close other tabs using this ERP, refresh, and try again. If it continues, download a backup before clearing browser site data.';if(btn){btn.disabled=false;btn.textContent='Sign in'}sessionStorage.removeItem(SESSION_KEY);localStorage.removeItem(SESSION_KEY)}
 }
+function doLogin(){
+  const btn=$('#loginBtn');
+  const r=loginCheck($('#lu').value,$('#lp').value,false);
+  if(typeof r==='string'){$('#loginErr').textContent=r;return}
+  loginFinish(r,btn)
+}
+/* hooks used by the two login screens (neon = normal users, lamp = developer) */
+let NORMAL_PENDING=null,DEV_PENDING=null,DEV_FAILS=0,DEV_LOCK=0;
+window.nexaNormalLogin=(u,p)=>{const r=loginCheck(u,p,false);if(typeof r==='string')return r;NORMAL_PENDING=r;return true};
+window.nexaNormalAfterLogin=()=>{const u=NORMAL_PENDING;NORMAL_PENDING=null;if(u)loginFinish(u,null)};
+window.nexaNormalReset=()=>resetPasswordDialog();
+window.nexaDevLogin=(u,p)=>{const now=Date.now();
+  if(now<DEV_LOCK)return 'Bahut zyada ghalat koshishen. '+Math.ceil((DEV_LOCK-now)/1000)+' second baad dobara try karein.';
+  const r=loginCheck(u,p,true);
+  if(typeof r==='string'){if(/incorrect/.test(r)&&++DEV_FAILS>=5){DEV_FAILS=0;DEV_LOCK=now+60000}return r}
+  DEV_FAILS=0;DEV_PENDING=r;return true};
+window.nexaDevAfterLogin=()=>{const u=DEV_PENDING;DEV_PENDING=null;if(u)loginFinish(u,null)};
 /* developer password reset from the login screen: verify developer login (or recovery key) once, then change any user's password */
 const RECOVERY_HASH='1e6ff6018b3800e227dc290e30968c74705332185ad6f34519a13516235cb3e2';
 let RESET_FAILS=0,RESET_WAIT=0;
@@ -2898,6 +3115,215 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
 })();
 
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('Offline cache off:',e)));
+</script>
+
+<script>
+/* ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : JS START ===================== */
+(function(){
+  const box = document.getElementById('nlBox'), err = document.getElementById('nlError');
+  const user = document.getElementById('nlUser'), pass = document.getElementById('nlPass');
+  const root = document.documentElement;
+  if(!box) return;
+
+  function play(){ box.classList.remove('show'); void box.offsetWidth; setTimeout(() => box.classList.add('show'), 150); }
+
+  /* Theme (yaad rehta hai) */
+  function setTheme(c, g){
+    root.style.setProperty('--nl-c', c); root.style.setProperty('--nl-g', g);
+    document.querySelectorAll('.nl-dot').forEach(d => d.classList.toggle('active', d.dataset.c === c));
+    try{ localStorage.setItem('nexaflow_neon_theme', JSON.stringify({c, g})); }catch(e){}
+  }
+  document.querySelectorAll('.nl-dot').forEach(d => d.onclick = () => setTheme(d.dataset.c, d.dataset.g));
+  try{ const s = JSON.parse(localStorage.getItem('nexaflow_neon_theme') || 'null'); if(s) setTheme(s.c, s.g); }catch(e){}
+
+  if(document.readyState === 'complete') play(); else window.addEventListener('load', play);
+
+  function showError(m){ err.textContent = m; box.classList.remove('nl-shake'); void box.offsetWidth; box.classList.add('nl-shake'); }
+  [user, pass].forEach(i => i.addEventListener('input', () => err.textContent = ''));
+
+  document.getElementById('nlReset').onclick = () => { if(typeof window.nexaNormalReset === 'function') window.nexaNormalReset(); };
+
+  let busy = false;
+  box.addEventListener('submit', e => {
+    e.preventDefault();
+    if(busy) return;
+    const u = user.value.trim(), p = pass.value;
+    if(!u || !p){ showError('Username aur password dono likhein'); return; }
+
+    /* normal login: sirf admin, booker, KPO, supply man. Sahi ho to true, warna error ka matn */
+    const r = (typeof window.nexaNormalLogin === 'function') ? window.nexaNormalLogin(u, p) : 'Login abhi tayyar nahi, thori der baad try karein';
+    if(r !== true){ showError(typeof r === 'string' ? r : 'Username ya password ghalat hai'); pass.value = ''; pass.focus(); return; }
+
+    busy = true;
+    box.classList.remove('show');
+    setTimeout(() => {
+      pass.value = ''; busy = false;
+      if(typeof window.nexaNormalAfterLogin === 'function') window.nexaNormalAfterLogin(u);
+    }, 900);
+  });
+})();
+/* ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : JS END ===================== */
+</script>
+
+<script>
+/* ===================== nexaFlow LAMP LOGIN : JS START ===================== */
+/* Developer-only login. Page par iska koi button nahi; window.nexaLamp.open() se khulta hai. */
+(function(){
+  let overlay = null, raf = 0, onKey = null, onResize = null;
+
+  function open(){
+    if(overlay) return;
+    const tpl = document.getElementById('lampTpl'); if(!tpl) return;
+    overlay = document.createElement('div');
+    overlay.id = 'lampOverlay';
+    overlay.appendChild(tpl.content.cloneNode(true));
+    document.body.appendChild(overlay);
+    init(overlay);
+  }
+
+  function close(){
+    if(!overlay) return;
+    cancelAnimationFrame(raf);
+    if(onKey) document.removeEventListener('keydown', onKey, true);
+    if(onResize) window.removeEventListener('resize', onResize);
+    onKey = onResize = null;
+    overlay.remove(); overlay = null;
+    try{ if(location.hash.toLowerCase() === '#dev') history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+    const nl = document.getElementById('nlUser'); if(nl && document.getElementById('login').style.display !== 'none') nl.focus();
+  }
+
+  function init(root){
+    const q = id => root.querySelector('#' + id);
+    const scene = q('lampScene'), cord = q('lampCord'), form = q('lampForm'), err = q('lampError');
+    const user = q('lampUser'), pass = q('lampPass');
+    const isOn = () => scene.classList.contains('lamp-on');
+
+    /* --- Esc ya "Wapas" = neon login par wapsi --- */
+    onKey = e => { if(e.key === 'Escape'){ e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    q('lampBack').onclick = close;
+
+    /* --- Lamp ON/OFF: OFF par form ki har cheez band --- */
+    function setLamp(on){
+      scene.classList.toggle('lamp-on', on);
+      form.querySelectorAll('input, button').forEach(el => el.disabled = !on);
+      root.querySelectorAll('.lamp-dot').forEach(d => d.disabled = !on);
+      form.setAttribute('aria-hidden', on ? 'false' : 'true');
+      if(on){ setTimeout(() => { if(overlay) user.focus(); }, 500); }
+      else { if(document.activeElement && root.contains(document.activeElement)) document.activeElement.blur(); err.textContent = ''; }
+    }
+
+    /* --- Theme rang (yaad rehta hai, sirf lamp ON par badalta hai) --- */
+    function setTheme(c){
+      root.style.setProperty('--lamp-c', c);
+      root.querySelectorAll('.lamp-dot').forEach(d => d.classList.toggle('active', d.dataset.c === c));
+      try{ localStorage.setItem('nexaflow_lamp_theme', c); }catch(e){}
+    }
+    root.querySelectorAll('.lamp-dot').forEach(d => d.onclick = () => { if(isOn()) setTheme(d.dataset.c); });
+    try{ const saved = localStorage.getItem('nexaflow_lamp_theme'); if(saved) setTheme(saved); }catch(e){}
+
+    /* --- Lamp taar --- */
+    cord.addEventListener('click', () => {
+      cord.classList.add('pull');
+      setTimeout(() => cord.classList.remove('pull'), 180);
+      setLamp(!isOn());
+    });
+
+    /* --- Shuru mein lamp bujha hua --- */
+    setLamp(false);
+
+    /* --- Password show/hide --- */
+    q('lampEye').onclick = function(){
+      const show = pass.type === 'password';
+      pass.type = show ? 'text' : 'password';
+      this.textContent = show ? 'Hide' : 'Show';
+    };
+
+    /* --- Error helpers --- */
+    function showError(msg){
+      err.textContent = msg;
+      form.classList.remove('lamp-shake'); void form.offsetWidth; form.classList.add('lamp-shake');
+    }
+    [user, pass].forEach(i => i.addEventListener('input', () => err.textContent = ''));
+
+    /* --- Submit --- */
+    let busy = false;
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      if(!isOn() || busy) return;               /* lamp OFF = login band */
+      const u = user.value.trim(), p = pass.value;
+      if(!u || !p){ showError('Username aur password dono likhein'); return; }
+
+      /* developer login: password ka SHA-256 hash stored hash se match hota hai. Sahi ho to true, warna error ka matn */
+      const r = (typeof window.nexaDevLogin === 'function') ? window.nexaDevLogin(u, p) : 'Login abhi tayyar nahi, thori der baad try karein';
+      if(r !== true){ showError(typeof r === 'string' ? r : 'Username ya password ghalat hai'); pass.value = ''; pass.focus(); return; }
+
+      /* Kamyab login: lamp bujhe, phir app */
+      busy = true;
+      pass.value = '';
+      setLamp(false);
+      setTimeout(() => {
+        close();
+        if(typeof window.nexaDevAfterLogin === 'function') window.nexaDevAfterLogin(u);
+      }, 700);
+    });
+
+    /* --- Dust particles (roshni mein udti dhool) --- */
+    const cv = q('lampDust'), ctx = cv.getContext('2d');
+    let W, H; const parts = [];
+    function size(){ W = cv.width = scene.offsetWidth; H = cv.height = scene.offsetHeight; }
+    size(); onResize = size; window.addEventListener('resize', onResize);
+    for(let i = 0; i < 45; i++) parts.push({x:Math.random(), y:Math.random(), r:Math.random()*1.6+.4, vx:(Math.random()-.5)*.0004, vy:(Math.random()-.5)*.0004, a:Math.random()});
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function draw(){
+      if(!overlay) return;
+      ctx.clearRect(0,0,W,H);
+      const on = scene.classList.contains('lamp-on');
+      const c = getComputedStyle(root).getPropertyValue('--lamp-c').trim();
+      parts.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if(p.x<0||p.x>1) p.vx*=-1; if(p.y<0||p.y>1) p.vy*=-1;
+        ctx.globalAlpha = (on ? .55 : .15) * p.a;
+        ctx.fillStyle = on ? c : '#ffffff';
+        ctx.beginPath(); ctx.arc(p.x*W, p.y*H, p.r, 0, Math.PI*2); ctx.fill();
+      });
+      if(!reduce) raf = requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  window.nexaLamp = { open: open, close: close };
+})();
+/* ===================== nexaFlow LAMP LOGIN : JS END ===================== */
+</script>
+
+<script>
+/* ===================== nexaFlow LOGIN SWITCH (neon -> lamp) : JS START ===================== */
+/* Lamp login sirf do tareeqon se khulta hai: (1) neon login ke logo par 3 second mein 5 tap, (2) URL mein #dev.
+   Login page par iska koi button ya hint nahi. */
+(function(){
+  const loggedOut = () => !(typeof ME !== 'undefined' && ME) && !document.getElementById('app').classList.contains('on');
+  function openLamp(){ if(loggedOut() && window.nexaLamp) window.nexaLamp.open(); }
+
+  /* (1) 5 taps / 3 seconds */
+  const logo = document.getElementById('nlBrand');
+  let taps = [];
+  if(logo) logo.addEventListener('click', () => {
+    const now = Date.now();
+    taps = taps.filter(t => now - t <= 3000); taps.push(now);
+    if(taps.length >= 5){ taps = []; openLamp(); }
+  });
+
+  /* (2) URL #dev: saved session wali app ke start hone ka intezar kar ke dekhte hain */
+  function checkHash(){ if(location.hash.toLowerCase() === '#dev') openLamp(); }
+  window.addEventListener('hashchange', checkHash);
+  let tries = 0;
+  const wait = setInterval(() => {
+    tries++;
+    if((typeof DB !== 'undefined' && DB && Array.isArray(DB.users)) || tries > 50){ clearInterval(wait); setTimeout(checkHash, 50); }
+  }, 100);
+})();
+/* ===================== nexaFlow LOGIN SWITCH (neon -> lamp) : JS END ===================== */
 </script>
 </body>
 </html>
