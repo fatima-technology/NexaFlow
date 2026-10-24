@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="generator" content="Fatima-Tech Distribution ERP">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff7a45'/%3E%3Cstop offset='1' stop-color='%23d63f17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='11' fill='url(%23g)'/%3E%3Cpath d='M14 34V14l20 20V14' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='34' cy='14' r='3.2' fill='white'/%3E%3C/svg%3E">
 <title>Distribution ERP</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -694,6 +695,16 @@ body.has-netbar .top{top:26px}
 .nl-brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:600;margin-bottom:4px;color:#f1f1f1;user-select:none;-webkit-user-select:none;touch-action:manipulation;cursor:default}
 .nl-icon{width:40px;height:40px;border-radius:10px;background:var(--nl-c);display:flex;align-items:center;justify-content:center;transition:background .5s}
 .nl-brand span{color:var(--nl-c);transition:color .5s}
+.nl-brand{gap:12px;margin-bottom:12px}
+.nl-icon{width:44px;height:44px;border-radius:12px;background:none;box-shadow:0 4px 14px var(--nl-g)}
+.nl-wm{display:flex;flex-direction:column;line-height:1.1}
+.nl-wm b{font-size:27px;font-weight:800;letter-spacing:-.6px;color:#fff}
+.nl-wm b span{font-weight:300;letter-spacing:-.2px;color:var(--nl-c)}
+.nl-wm small{margin-top:4px;font-size:10px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:#7d8491}
+.nl-eye{position:absolute;right:0;top:8px;width:30px;height:28px;min-height:0;padding:0;border:0;background:none;color:#8a8f99;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.nl-eye:hover,.nl-eye[aria-pressed="true"]{color:var(--nl-c)}
+.nl-eye .off{display:none}.nl-eye[aria-pressed="true"] .on{display:none}.nl-eye[aria-pressed="true"] .off{display:block}
+.nl-field.has-eye>svg{display:none}
 .nl-sub{font-size:14px;color:#9aa0aa;margin:0 0 1.5rem}
 .nl-field{position:relative;margin-bottom:1.1rem}
 #login .nl-field input{width:100%;height:44px;min-height:0;background:transparent;border:none;border-bottom:1.5px solid #3a3f4b;border-radius:0;box-shadow:none;color:#f1f1f1;padding:0 34px 0 2px;font-size:15px;outline:none;transition:border-color .3s}
@@ -797,17 +808,18 @@ body.has-netbar .top{top:26px}
 
   <form class="nl-box" id="nlBox" novalidate>
     <div class="nl-brand nl-anim" id="nlBrand" style="--i:0">
-      <div class="nl-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></div>
-      nexa<span>Flow</span>
+      <div class="nl-icon"><svg width="44" height="44" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="nlLg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient></defs><rect width="48" height="48" rx="12" fill="var(--nl-c)"/><rect width="48" height="48" rx="12" fill="url(#nlLg)"/><path d="M14 34V14l20 20V14" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="34" cy="14" r="3.2" fill="#fff"/></svg></div>
+      <div class="nl-wm"><b>Nexa<span>Flow</span></b><small>Distribution ERP</small></div>
     </div>
     <p class="nl-sub nl-anim" style="--i:1">Welcome back, login karein</p>
     <div class="nl-field nl-anim" style="--i:2">
       <input id="nlUser" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Username">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a8f99" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
     </div>
-    <div class="nl-field nl-anim" style="--i:3">
+    <div class="nl-field has-eye nl-anim" style="--i:3">
       <input id="nlPass" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a8f99" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <button type="button" class="nl-eye" id="nlEye" aria-label="Show password" aria-pressed="false"><svg class="on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 19C5.5 19 1.5 12 1.5 12a19 19 0 0 1 4.6-5.4M9.9 5.2A10 10 0 0 1 12 5c6.5 0 10.5 7 10.5 7a19 19 0 0 1-2.2 3.1M1 1l22 22M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
     </div>
     <p class="nl-error" id="nlError" role="alert"></p>
     <button type="submit" class="nl-btn nl-anim" id="nlSubmit" style="--i:4">Login</button>
@@ -3463,6 +3475,10 @@ if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addE
     candles.forEach((k,i)=>{const x=i*STEP+off+STEP/2,yy=y(k.c-8);i?cx.lineTo(x,yy):cx.moveTo(x,yy)});cx.stroke();cx.shadowBlur=0}
   size();addEventListener('resize',size);raf=requestAnimationFrame(draw);
 })();
+</script>
+<script>
+(function(){const b=document.getElementById('nlEye'),i=document.getElementById('nlPass');if(!b||!i)return;
+  b.addEventListener('click',()=>{const show=i.type==='password';i.type=show?'text':'password';b.setAttribute('aria-pressed',show);b.setAttribute('aria-label',show?'Hide password':'Show password');i.focus()})})();
 </script>
 </body>
 </html>
