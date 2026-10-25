@@ -902,7 +902,7 @@ body.has-netbar .top{top:26px}
     <div class="login-err" id="loginErr" role="alert"></div>
     <button class="btn pri full" id="loginBtn">Sign in</button>
     <button type="button" class="login-link" id="loginReset">Forgot / reset password</button>
-    <p class="foot-note">New booker or supply man? Ask your admin to create your username.</p>
+    <p class="foot-note">New booker? Ask your admin to create your username. Supply men do not need a login.</p>
     <div class="dev" id="loginDev">Developed by Fatima-Tech</div>
   </main>
  </div>
@@ -1104,13 +1104,14 @@ const MODULES=[
   {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true},
   {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'Developer',devOnly:true}
 ];
-const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man',staff:'Staff (no login)'};
+const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man (no login)',staff:'Staff (no login)'};
+const NO_LOGIN=['staff','supplyman'];
 const ROLE_DEFAULTS={
   admin:MODULES.filter(m=>!m.devOnly).map(m=>m.id),
   booker:['dashboard','pos','orderSync','invoices','recovery','shops','bookerReports','help'],
   storemanager:['dashboard','products','purchases','suppliers','returns','claims','storeReports','help'],
   kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','recovery','shops','expenses','help'],
-  supplyman:['dashboard','collection','help'],
+  supplyman:[],
   staff:[]
 };
 function defaultSettings(){return{
@@ -1230,7 +1231,7 @@ function loginCheck(u,p,devOnly){
   if(user&&!user.pass&&(user.role==='developer')===!!devOnly){setTimeout(firstRunSetup,50);return 'First-time setup is needed. Please set the passwords in the window that opened.'}
   if(!user||(user.role==='developer')!==!!devOnly||!verifyPass(u,p,user.pass))return 'Username or password is incorrect.';
   if(!String(user.pass).startsWith('s1$'))user.pass=hashPass(u,p);
-  if(user.active===false||user.role==='staff')return 'This account is disabled for login. Please contact the admin.';
+  if(user.active===false||NO_LOGIN.includes(user.role))return 'This account is disabled for login. Please contact the admin.';
   return user}
 function loginFinish(user,btn){
   try{
@@ -1277,7 +1278,7 @@ function resetPasswordStep2(by){
   const users=DB.users.slice().sort((a,b)=>(a.role==='developer'?-1:b.role==='developer'?1:0));
   modal('Reset password — choose user',`<p class="note">Verified as developer. Select any user (your own account too) and set a new password.</p>
    <div class="grid g2 mt">${F('User',sel('rpUser',users.map(u=>({v:u.id,t:(u.name||u.username)+' ('+u.username+') — '+(u.role==='developer'?'Developer':ROLES[u.role]||u.role)})),users[0]&&users[0].id),'wide')}
-   ${F('Username (login)',inp('rpNU',users[0]?users[0].username:'','text','autocapitalize="none" spellcheck="false" autocomplete="off"'))}${F('New password',inp('rpN1','','password','autocomplete="new-password"'))}${F('Confirm password',inp('rpN2','','password','autocomplete="new-password"'))}
+   ${F('Username (login; auto for no-login roles)',inp('rpNU',users[0]?users[0].username:'','text','autocapitalize="none" spellcheck="false" autocomplete="off"'))}${F('New password',inp('rpN1','','password','autocomplete="new-password"'))}${F('Confirm password',inp('rpN2','','password','autocomplete="new-password"'))}
    ${F('Account status',sel('rpAct',[{v:'1',t:'Active'},{v:'0',t:'Disabled'}],'1'))}</div>`,
    [{t:'Save password',pri:1,fn:()=>{const u=byId('users',V('rpUser'));if(!u)return toast('Select a user.',true);
      const nu=V('rpNU').toLowerCase().replace(/\s+/g,''),a=$('#rpN1').value,b=$('#rpN2').value;
@@ -3035,14 +3036,14 @@ function userEditor(u,dev){
   const n=!u;u=u||{username:'',name:'',role:'booker',active:true,phone:''};
   const roles=Object.entries(ROLES).filter(([k])=>dev||k!=='admin'||isDev()||ME.role==='admin').map(([v,t])=>({v,t}));
   const perms=u.perms&&u.perms.length?u.perms:ROLE_DEFAULTS[u.role]||[];
-  modal(n?'New user':'Edit user: '+u.username,`<div class="grid">${F('Full name',inp('euN',u.name))}${F('Username (login)',inp('euU',u.username,'text','autocapitalize="none"'+(n?'':' readonly')))}
+  modal(n?'New user':'Edit user: '+u.username,`<div class="grid">${F('Full name',inp('euN',u.name))}${F('Username (login; auto for no-login roles)',inp('euU',u.username,'text','autocapitalize="none"'+(n?'':' readonly')))}
    ${F(n?'Password':'New password (leave blank to keep the current one)',inp('euP','','text'))}${F('Role',sel('euR',roles,u.role))}${F('Phone',inp('euPh',u.phone||''))}${F('Status',sel('euA',[{v:'1',t:'Active'},{v:'0',t:'Disabled'}],u.active===false?'0':'1'))}
    ${F('Booker of supply man',sel('euBk',usersByRole('booker').map(b=>({v:b.id,t:b.name||b.username})),u.bookerId||'','—'))}</div>
    <h4 class="mt">Screens allowed</h4><div class="row" id="euPerms">${MODULES.filter(m=>!m.devOnly).map(m=>`<label class="chip"><input type="checkbox" value="${m.id}" ${perms.includes(m.id)?'checked':''}> ${m.icon} ${esc(m.label)}</label>`).join('')}</div>
    <div class="row mt"><button class="btn sm" id="euDef">Default permissions of role</button></div>`,
    [...(!n&&u.id!==ME.id?[{t:'Delete',bad:1,fn:()=>confirmBox('Delete this user? (The name will stay in old records.)',()=>{DB.users=DB.users.filter(x=>x.id!==u.id);log('Users','User deleted',u.username);save();render()})}]:[]),
-    {t:'Save',pri:1,fn:()=>{const un=V('euU').toLowerCase().replace(/\s+/g,'');if(!un||!V('euN'))return toast('Enter name and username.',true);
-     if(n&&DB.users.some(x=>x.username.toLowerCase()===un))return toast('This username already exists.',true);if(n&&V('euR')!=='staff'&&V('euP').length<4)return toast('Password must be at least 4 characters.',true);
+    {t:'Save',pri:1,fn:()=>{const nl=NO_LOGIN.includes(V('euR'));let un=V('euU').toLowerCase().replace(/\s+/g,'');if(!un&&n&&nl){const base=V('euN').toLowerCase().replace(/[^a-z0-9]/g,'')||V('euR');un=base;let k=1;while(DB.users.some(x=>x.username.toLowerCase()===un))un=base+(++k)}if(!un||!V('euN'))return toast('Enter name and username.',true);
+     if(n&&DB.users.some(x=>x.username.toLowerCase()===un))return toast('This username already exists.',true);if(n&&!nl&&V('euP').length<4)return toast('Password must be at least 4 characters.',true);
      Object.assign(u,{name:V('euN'),role:V('euR'),phone:V('euPh'),active:V('euA')==='1',bookerId:V('euBk'),perms:$$('#euPerms input:checked').map(c=>c.value)});
      if(n){u.id=uid();u.username=un;u.mustChange=true;DB.users.push(u)}if(V('euP'))u.pass=hashPass(u.username,V('euP'));
      log('Users',n?'User added':'User edited',u.username);save();closeModal();render();toast('User saved.')}}]);
@@ -3056,7 +3057,7 @@ VIEWS.attendanceLog=el=>{
   el.innerHTML=`<div class="card"><h3>Attendance timing settings</h3><p class="small muted">Admin yahan office start, chhutti aur late threshold set kar sakta hai. Timing save karne ke baad login/logout records neeche nazar aayenge.</p>
   <div class="grid g2">${F('Attendance / office start time',inp('apStart',pol.start||'09:00','time'))}${F('Chhutti / office end time',inp('apEnd',pol.end||'18:00','time'))}${F('Late mark after',inp('apLate',pol.lateAfter||'09:15','time'))}${F('Attendance tracking',sel('apEnabled',[{v:'1',t:'Enabled'},{v:'0',t:'Disabled'}],pol.enabled===false?'0':'1'))}</div>
   <div class="row mt"><button class="btn pri" id="apSave">💾 Save attendance timings</button></div></div>
-  <div class="card"><h3>User attendance log</h3><div class="grid g2">${F('Date',inp('apDate',day,'date'))}${F('User',sel('apUser',[{v:'',t:'All users'},...DB.users.filter(u=>u.role!=='developer'&&u.role!=='staff').map(u=>({v:u.id,t:(u.name||u.username)+' ('+u.username+')'}))],''))}</div><div id="apOut" class="mt"></div></div>`;
+  <div class="card"><h3>User attendance log</h3><div class="grid g2">${F('Date',inp('apDate',day,'date'))}${F('User',sel('apUser',[{v:'',t:'All users'},...DB.users.filter(u=>u.role!=='developer'&&!NO_LOGIN.includes(u.role)).map(u=>({v:u.id,t:(u.name||u.username)+' ('+u.username+')'}))],''))}</div><div id="apOut" class="mt"></div></div>`;
   $('#apSave').onclick=()=>{S().attendancePolicy={start:V('apStart')||'09:00',end:V('apEnd')||'18:00',lateAfter:V('apLate')||'09:15',enabled:V('apEnabled')==='1'};log('Attendance','Timing policy saved','',`${S().attendancePolicy.start}–${S().attendancePolicy.end}; late after ${S().attendancePolicy.lateAfter}`);save();toast('Attendance timings saved.');render()};
   const draw=()=>{const d=V('apDate'),u=V('apUser');const rows=(DB.attendanceLogs||[]).filter(a=>a.date===d&&(!u||a.userId===u)).sort((a,b)=>(a.userName||'').localeCompare(b.userName||''));
     $('#apOut').innerHTML=table([{t:'User'},{t:'Role'},{t:'Date'},{t:'In time'},{t:'Out time'},{t:'Status'},{t:'Working hours',n:1}],rows.map(a=>{const policy=S().attendancePolicy||{lateAfter:'09:15'};const late=a.inTime&&a.inTime>(policy.lateAfter||'09:15');let hrs='—';if(a.inAt&&a.outAt){const mins=Math.max(0,Math.round((new Date(a.outAt.replace(' ','T'))-new Date(a.inAt.replace(' ','T')))/60000));hrs=Math.floor(mins/60)+'h '+(mins%60)+'m'}return[esc(a.userName||''),esc(ROLES[a.role]||a.role||''),esc(a.date),esc(a.inTime||'—'),esc(a.outTime||'—'),badge(a.outTime?'Completed':(late?'Late':'Present'),a.outTime?'ok':(late?'bad':'ok')),hrs]}))||'<p class="muted">No attendance records for this date.</p>';};
