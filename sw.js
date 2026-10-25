@@ -1,7 +1,7 @@
 /* NexaFlow offline shell: internet na ho tab bhi app khule (orders phone mein pending rehte hain) */
-const CACHE='nexaflow-shell-v1';
+const CACHE='nexaflow-shell-v2';
 const LIBS=/^https:\/\/(cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./index.html'])).then(()=>self.skipWaiting()))});
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./index.html','./manifest.json','./icons/icon-192.png','./icons/icon-512.png'])).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 /* page: pehle net (4 sec), na mile ya slow ho to cache se; online hone par hamesha nayi version milti hai */
 async function page(req){
