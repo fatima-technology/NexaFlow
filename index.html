@@ -110,6 +110,7 @@ a{color:var(--accent)}
 .user-menu{position:absolute;right:16px;top:calc(var(--top-h) - 4px);background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 14px 34px rgba(0,0,0,.14);min-width:200px;padding:6px;display:none;z-index:40}
 .user-menu.on{display:block}
 .user-menu button{color:var(--ink);display:block;width:100%;text-align:left;border:0;background:none;padding:10px;border-radius:6px;cursor:pointer}
+.user-menu button[hidden]{display:none}
 .user-menu button:hover{background:var(--bg)}
 .content{padding:20px;max-width:1400px;width:100%}
 
@@ -997,6 +998,7 @@ body.has-netbar .top{top:26px}
       <div class="user-menu" id="userMenu">
         <div style="padding:8px 10px" class="small muted" id="uMenuInfo"></div>
         <button data-act="theme">🎨 Theme & day / night</button>
+        <button data-act="install" id="installBtn" hidden>📲 Install app</button>
         <button data-act="password">🔑 Change my password</button>
         <button data-act="logout" style="color:var(--bad)">🚪 Logout</button>
       </div>
@@ -1912,7 +1914,7 @@ document.addEventListener('click',e=>{
   if(e.target.closest('[data-menu]')||e.target.closest('#menuBtn')){document.body.classList.toggle('drawer');return}
   if(e.target.closest('#scrim')){document.body.classList.remove('drawer');return}
   if(e.target.closest('#userBtn')){$('#userMenu').classList.toggle('on');return}
-  const a=e.target.closest('#userMenu [data-act]');if(a){$('#userMenu').classList.remove('on');a.dataset.act==='logout'?logout():a.dataset.act==='theme'?themePicker():changePasswordDialog(false);return}
+  const a=e.target.closest('#userMenu [data-act]');if(a){$('#userMenu').classList.remove('on');a.dataset.act==='logout'?logout():a.dataset.act==='theme'?themePicker():a.dataset.act==='install'?installApp():changePasswordDialog(false);return}
   if(e.target.closest('[data-mode-btn]')){toggleMode();return}
   if(!e.target.closest('#userMenu'))$('#userMenu').classList.remove('on');
 });
@@ -3272,6 +3274,18 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   document.addEventListener('touchcancel',function(){tracking=false;},{passive:true});
 })();
 
+/* Install app: Chrome/Edge par seedha prompt; iPhone par Safari ka tareeqa batata hai */
+let _installEv=null;
+const _standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+const _ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+function _showInstall(){const b=$('#installBtn');if(b)b.hidden=_standalone()||!(_installEv||_ios)}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();_installEv=e;_showInstall()});
+window.addEventListener('appinstalled',()=>{_installEv=null;_showInstall();toast('NexaFlow install ho gaya')});
+async function installApp(){
+  if(_installEv){const ev=_installEv;_installEv=null;ev.prompt();await ev.userChoice.catch(()=>{});_showInstall();return}
+  if(_ios)toast('Safari mein Share dabayein, phir "Add to Home Screen"');
+}
+_showInstall();
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('Offline cache off:',e)));
 </script>
 
