@@ -1125,7 +1125,7 @@ function defaultSettings(){return{
   bookerOwnShopsOnly:true,recoveryNeedsApproval:true,creditLimitBlock:false,
   expenseHeads:'Fuel, Vehicle repair, Rent, Electricity, Tea / food, Labour, Misc',
   productCategories:'General',
-  theme:'neon',mode:'auto',
+  theme:'skyblue',mode:'day',
   modules:Object.fromEntries(MODULES.map(m=>[m.id,true])),
   print:defaultPrint(),
   firebase:{enabled:false,config:'',path:''}
@@ -1768,6 +1768,9 @@ const VIEWS={};
 const LIGHT_BASE={bg:'#f1f2f7',card:'#ffffff',ink:'#191c33','ink-hi':'#191c33',mute:'#5d6385',line:'#e0e2ee',soft:'#f5f6fb','soft-2':'#eceef7',field:'#ccd0e2','field-bg':'#ffffff','btn-bg':'#ffffff','th-ink':'#3c4166',ok:'#157f3b',warn:'#a86108',bad:'#b42318',info:'#1d5fa8','accent-ink':'#ffffff','lead-ink':'#ffffff','side-head':'#ffffff',saffron:'#f0a531',hot:'#e0217d',grid:'#7887ff','accent-2':'#5b6bd6',cut:'14px'};
 const DARK_BASE={bg:'#0f1222',card:'#171b30',ink:'#e6e8f5','ink-hi':'#ffffff',mute:'#9aa0c4',line:'#272c48',soft:'#1b2038','soft-2':'#222846',field:'#363c62','field-bg':'#12162a','btn-bg':'#1b2038','th-ink':'#c4c8e6',ok:'#4ade80',warn:'#fbbf24',bad:'#f87171',info:'#60a5fa','accent-ink':'#0b0e1c','lead-ink':'#ffffff','side-head':'#ffffff',saffron:'#f5b041',hot:'#ff4fa0',grid:'#7887ff','accent-2':'#8c9eff',cut:'14px'};
 const THEMES={
+ skyblue:{name:'Light Blue (Arial)',group:'Normal',st:'soft',head:'Arial',body:'Arial',sys:true,r:[14,10,8],
+   day:{bg:'#f2f8fd',card:'#ffffff',ink:'#102a43','ink-hi':'#0b1f33',mute:'#4a6178',line:'#d3e4f3',soft:'#f5faff','soft-2':'#e3f0fb',field:'#9fbdd8','field-bg':'#ffffff','btn-bg':'#ffffff','th-ink':'#1d3d5c',accent:'#0b66c3','accent-2':'#2f8be0','accent-ink':'#ffffff',side:'#d6eaff','side-2':'#bfdcf8','side-ink':'#12304f','side-mute':'#48667f','side-head':'#0a2540','lead-ink':'#0a2540',ok:'#157f3b',warn:'#9a5a00',bad:'#b42318',info:'#0b66c3',saffron:'#f0a531',hot:'#e0217d'},
+   night:{bg:'#0d1a28',card:'#13263a',ink:'#e6f1fb',mute:'#9db8d0',line:'#22405c',soft:'#172e45','soft-2':'#1d3a56',field:'#34597b','field-bg':'#0f2133','btn-bg':'#172e45','th-ink':'#c5dcf0',accent:'#5db0ff','accent-2':'#8cc8ff','accent-ink':'#04192b',side:'#0a1522','side-2':'#13263a','side-ink':'#d4e6f7','side-mute':'#86a5c0'}},
  classic:{name:'Classic',group:'Normal',st:'soft',head:'Onest',body:'Onest',r:[16,10,8],brand:true,
    day:{'side-2':'#262a4f','side-ink':'#dfe2f5','side-mute':'#9198c4'},
    night:{side:'#0b0e1c','side-2':'#191d38','side-ink':'#d4d8f2','side-mute':'#8a91bd'}},
@@ -1796,8 +1799,8 @@ const THEMES={
 const FONT_W={'Onest':'400;500;600;700;800','Nunito':'400;600;700;800','IBM Plex Sans':'400;500;600;700','Source Serif 4':'500;600;700','Source Sans 3':'400;500;600;700','Lora':'500;600;700','Libre Franklin':'400;500;600;700','Chakra Petch':'500;600;700','Rajdhani':'500;600;700','Exo 2':'500;600;700;800'};
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}
-function themeId(){let id=lsGet('ft_theme')||(DB&&S().theme)||'neon';if(id==='gaming')id='neon';return THEMES[id]?id:'classic'}
-function themeMode(){const m=lsGet('ft_mode')||(DB&&S().mode)||'auto';if(m==='day'||m==='night')return m;const th=THEMES[themeId()];if(th.nightFirst)return'night';return window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'night':'day'}
+function themeId(){let id=lsGet('ft_theme')||(DB&&S().theme)||'skyblue';if(id==='gaming')id='neon';return THEMES[id]?id:'skyblue'}
+function themeMode(){const m=lsGet('ft_mode')||(DB&&S().mode)||'day';if(m==='day'||m==='night')return m;const th=THEMES[themeId()];if(th.nightFirst)return'night';return window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'night':'day'}
 function applyTheme(){
   const id=themeId(),mode=themeMode(),th=THEMES[id],s=DB?S():{};
   const v=Object.assign({},mode==='night'?DARK_BASE:LIGHT_BASE,th[mode]||{});
@@ -1808,9 +1811,10 @@ function applyTheme(){
   const r=document.documentElement.style;for(const k in v)r.setProperty('--'+k,v[k]);
   const b=document.body;['s-soft','s-corp','s-neon','gaming'].forEach(c=>b.classList.remove(c));b.classList.add('s-'+th.st);b.classList.toggle('mode-night',mode==='night');
   document.documentElement.style.colorScheme=mode==='night'?'dark':'light';document.documentElement.dataset.theme=id;document.documentElement.dataset.mode=mode;
-  const fam=[...new Set([th.head,th.body])].map(f=>'family='+f.replace(/ /g,'+')+':wght@'+(FONT_W[f]||'400;600;700')).join('&');
   let l=document.getElementById('themeFont');if(!l){l=document.createElement('link');l.id='themeFont';l.rel='stylesheet';document.head.appendChild(l)}
-  const href='https://fonts.googleapis.com/css2?'+fam+'&display=swap';if(l.href!==href)l.href=href;
+  if(th.sys){l.removeAttribute('href')}else{
+    const fam=[...new Set([th.head,th.body])].map(f=>'family='+f.replace(/ /g,'+')+':wght@'+(FONT_W[f]||'400;600;700')).join('&');
+    const href='https://fonts.googleapis.com/css2?'+fam+'&display=swap';if(l.href!==href)l.href=href}
   const m=document.querySelector('meta[name=theme-color]');if(m)m.content=String(v.side).startsWith('#')?v.side:'#1a1d3a';
   $$('[data-mode-btn]').forEach(x=>{x.textContent=mode==='night'?'☀️':'🌙';x.title=mode==='night'?'Switch to day mode':'Switch to night mode';x.setAttribute('aria-label',x.title)});
 }
@@ -1828,7 +1832,7 @@ function themePicker(){
    ${Object.entries(groups).map(([g,list])=>`<h4 style="margin:14px 0 8px">${esc(g)}</h4><div class="theme-grid">${list.map(([k,t])=>{const v=sw(t,mode);return`<button class="theme-card${k===cur?' on':''}" data-pt="${k}" style="--tc-bg:${v.bg||'#fff'};--tc-card:${v.card||'#fff'};--tc-side:${v.side||'#222'};--tc-acc:${v.accent||'#3949ab'};--tc-ink:${v.ink||'#111'};--tc-hot:${t.st==='neon'?(v.hot||v.accent):v.side}">
      <span class="tc-prev"><i class="tc-s"></i><i class="tc-m"><b></b><b></b><b class="tc-a"></b></i></span><span class="tc-name" style="font-family:'${t.head}',var(--font)">${esc(t.name)}</span><span class="tc-sub">${esc(t.st==='corp'?'Flat business layout':t.st==='neon'?'HUD layout, cut corners':'Rounded layout')} • ${esc(t.head)}</span></button>`}).join('')}</div>`).join('')}
    <p class="small muted mt">Your choice is saved on this device only. Other users and devices keep their own theme.</p>`,
-   [{t:'Use developer default',fn:()=>{lsSet('ft_theme',null);lsSet('ft_mode',null);if(DB){S().theme='neon';S().mode='auto';save(true)}applyTheme();themePicker()}}]);
+   [{t:'Use developer default',fn:()=>{lsSet('ft_theme',null);lsSet('ft_mode',null);if(DB){S().theme='skyblue';S().mode='day';save(true)}applyTheme();themePicker()}}]);
   $$('[data-pt]').forEach(b=>b.onclick=()=>{const next=b.dataset.pt;let mode=themeMode();if(!lsGet('ft_mode')&&THEMES[next].nightFirst)mode='night';persistThemeChoice(next,mode);applyTheme();themePicker()});
   $$('[data-pm]').forEach(b=>b.onclick=()=>{persistThemeChoice(themeId(),b.dataset.pm);applyTheme();themePicker()});
 }
