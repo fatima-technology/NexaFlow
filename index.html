@@ -2027,7 +2027,10 @@ VIEWS.pos=el=>{
    </div>`;
   const findP=()=>{const v=V('pProd').toLowerCase();return DB.products.find(p=>p.name.toLowerCase()===v||(p.sku&&p.sku.toLowerCase()===v))};
   const shopInfo=()=>{const sh=byId('shops',V('pShop'));$('#pShopInfo').innerHTML=sh?`Outstanding: <b>${money(shopDue(sh.id)-(ed&&ed.shopId===sh.id?invDue(ed):0))}</b>${N(sh.creditLimit)?' • Credit limit: '+money(sh.creditLimit):''}${sh.phone?' • '+esc(sh.phone):''}`:''};
-  $('#pShop').onchange=()=>{const sh=byId('shops',V('pShop'));if(sh&&sh.bookerId&&ME.role!=='booker'&&$('#pBooker').tagName==='SELECT')$('#pBooker').value=sh.bookerId;shopInfo()};shopInfo();
+  const fillSM=()=>{const bk=V('pBooker'),cur=V('pSM')||(ed&&ed.supplymanId)||'';const list=sms.filter(u=>!bk||u.bookerId===bk||u.id===cur);
+    $('#pSM').innerHTML=opt(list.map(u=>({v:u.id,t:u.name||u.username})),list.some(u=>u.id===cur)?cur:'','— later —')};
+  if($('#pBooker').tagName==='SELECT')$('#pBooker').onchange=fillSM;fillSM();
+  $('#pShop').onchange=()=>{const sh=byId('shops',V('pShop'));if(sh&&sh.bookerId&&ME.role!=='booker'&&$('#pBooker').tagName==='SELECT')$('#pBooker').value=sh.bookerId;fillSM();shopInfo()};shopInfo();
   $('#pProd').oninput=()=>{const p=findP();if(!p){$('#pHint').textContent='';return}
     const inCart=sum(POS.items.filter(i=>i.productId===p.id),i=>i.pcs);const st=stockOf(p.id,POS.editId)-inCart;
     $('#pRate').value=p.tradePc||'';$('#pHint').innerHTML=`Stock: <b>${splitPcs(p,st)}</b> (${fmt(st)} pcs) • Packing ${p.packing} • Trade/ctn ${money(N(p.tradePc)*N(p.packing))} • Retail/pc ${money(p.retailPc)}`};
