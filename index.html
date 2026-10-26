@@ -1656,10 +1656,10 @@ const IMPORT_TARGETS={
     ['openingPcs','Opening loose pcs',0,['opening pcs','loose','pcs','pieces','loose pcs']]]},
   shops:{label:'Shops / customers',fields:[
     ['name','Shop name',1,['shop','shop name','customer','name','store']],
-    ['owner','Owner',0,['owner','owner name','contact person']],
-    ['phone','Phone',0,['phone','mobile','contact','cell']],
-    ['route','Route / area',0,['route','area','sector','beat']],
-    ['address','Address',0,['address','location']],
+    ['owner','Owner',1,['owner','owner name','contact person']],
+    ['phone','Phone',1,['phone','mobile','contact','cell']],
+    ['route','Route / area',1,['route','area','sector','beat']],
+    ['address','Address',1,['address','location']],
     ['booker','Booker (username)',0,['booker','order booker','salesman','username']],
     ['creditLimit','Credit limit',0,['credit limit','limit']],
     ['opening','Opening balance',0,['opening','balance','opening balance','due','outstanding']]]},
@@ -1754,9 +1754,10 @@ async function importFromFile(target,onDone){
     $$('#mBody [data-fld]').forEach(s=>s.onchange=()=>{map[s.dataset.fld]=s.value===''?undefined:N(s.value);draw()});
   };
   modal('Import: '+T.label,'',[{t:'Import',pri:1,fn:()=>{
-    const data=rows.slice(hdr+1).map(r=>{const o={};T.fields.forEach(f=>{if(map[f[0]]!==undefined&&map[f[0]]!=='')o[f[0]]=String(r[map[f[0]]]??'').trim()});return o}).filter(o=>o.name&&!/^(total|grand total|sub ?total)$/i.test(o.name));
-    if(!data.length)return toast('Select the product / shop name column.',true);
-    const n=applyImport(target,data);closeModal();toast(n+' records imported.');onDone&&onDone(data);render();
+    const all=rows.slice(hdr+1).map(r=>{const o={};T.fields.forEach(f=>{if(map[f[0]]!==undefined&&map[f[0]]!=='')o[f[0]]=String(r[map[f[0]]]??'').trim()});return o}).filter(o=>o.name&&!/^(total|grand total|sub ?total)$/i.test(o.name));
+    const req=T.fields.filter(f=>f[2]);const data=all.filter(o=>req.every(f=>o[f[0]]));const skipped=all.length-data.length;
+    if(!data.length)return toast(all.length?'Every row is missing required data ('+req.map(f=>f[1]).join(', ')+'). Check the column match.':'Select the product / shop name column.',true);
+    const n=applyImport(target,data);closeModal();toast(n+' records imported.'+(skipped?' '+skipped+' rows skipped: missing '+req.map(f=>f[1]).join(' / ')+'.':''));onDone&&onDone(data);render();
   }}]);
   draw();
 }
@@ -2719,11 +2720,11 @@ function addShopPayment(s){if(!s)return;const due=Math.max(0,r2(shopDue(s.id)));
 }
 function editShop(s){const n=!s;s=s||{name:'',owner:'',phone:'',route:'',address:'',creditLimit:N(S().defaultCreditLimit),opening:0,openingDate:today(),bookerId:ME.role==='booker'?ME.id:''};
   const routes=[...new Set(DB.shops.map(x=>x.route).filter(Boolean))];
-  modal(n?'New shop':'Edit shop',`<div class="grid">${F('Shop name',inp('esN',s.name),'wide')}${F('Owner',inp('esO',s.owner))}${F('Phone',inp('esP',s.phone,'tel'))}${F('Route / area',`<input id="esR" list="esRL" value="${esc(s.route)}"><datalist id="esRL">${opt(routes)}</datalist>`)}
-   ${F('Booker',ME.role==='booker'?`<input readonly value="${esc(ME.name)}"><input type="hidden" id="esB" value="${ME.id}">`:sel('esB',usersByRole('booker').map(u=>({v:u.id,t:u.name||u.username})),s.bookerId,'—'))}
-   ${F('Address',inp('esA',s.address),'wide')}${F('Credit limit',inp('esL',s.creditLimit,'number',isAdmin()?'':'readonly'))}${F('Opening balance',inp('esOB',s.opening,'number',isAdmin()?'':'readonly'))}${F('Opening date',inp('esOD',s.openingDate,'date'))}</div>`,
+  modal(n?'New shop':'Edit shop',`<div class="grid">${F('Shop name *',inp('esN',s.name),'wide')}${F('Owner *',inp('esO',s.owner))}${F('Phone *',inp('esP',s.phone,'tel'))}${F('Route / area *',`<input id="esR" list="esRL" value="${esc(s.route)}"><datalist id="esRL">${opt(routes)}</datalist>`)}
+   ${F('Booker'+(ME.role==='booker'?'':' *'),ME.role==='booker'?`<input readonly value="${esc(ME.name)}"><input type="hidden" id="esB" value="${ME.id}">`:sel('esB',usersByRole('booker').map(u=>({v:u.id,t:u.name||u.username})),s.bookerId,'—'))}
+   ${F('Address *',inp('esA',s.address),'wide')}${F('Credit limit',inp('esL',s.creditLimit,'number',isAdmin()?'':'readonly'))}${F('Opening balance',inp('esOB',s.opening,'number',isAdmin()?'':'readonly'))}${F('Opening date',inp('esOD',s.openingDate,'date'))}</div>`,
    [...(!n&&isAdmin()?[{t:'Delete',bad:1,fn:()=>deleteShop(s)}]:[]),
-    {t:'Save',pri:1,fn:()=>{if(!V('esN'))return toast('Enter the shop name.',true);
+    {t:'Save',pri:1,fn:()=>{const miss=[['esN','shop name'],['esO','owner'],['esP','phone'],['esR','route'],['esA','address'],...(ME.role!=='booker'&&usersByRole('booker').length?[['esB','booker']]:[])].filter(([i])=>!V(i));if(miss.length)return toast('Required: '+miss.map(x=>x[1]).join(', ')+'.',true);
      const dup=DB.shops.find(x=>x!==s&&x.id!==s.id&&x.name.trim().toLowerCase()===V('esN').trim().toLowerCase()&&String(x.route||'').trim().toLowerCase()===V('esR').trim().toLowerCase());
      if(dup&&!V('esA')&&!V('esO'))return toast('Same shop name already exists on this route. Enter the address or owner name so the two can be told apart.',true);
      if(dup&&!confirm('A shop named "'+dup.name+'" already exists on '+(dup.route?'route "'+dup.route+'"':'the same (empty) route')+(dup.address?' ('+dup.address+')':'')+'. Same name and route can cause recoveries to be entered on the wrong shop. Save anyway?'))return;
