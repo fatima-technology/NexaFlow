@@ -2492,7 +2492,7 @@ VIEWS.returns=el=>{
       $('#rcGo').onclick=()=>{const iv=byId('invoices',V('rcInv'));if(!iv)return toast('Select an invoice.',true);if(!V('rcWhy'))return toast('Enter a reason.',true);if(!guardEdit(iv.date))return;if(invCollected(iv.id)>0&&!confirm('The supply man has already collected cash on this invoice; that record will stay. Cancel the invoice?'))return;
         iv.status='cancelled';iv.cancelReason=V('rcWhy');iv.cancelledBy=ME.username;iv.cancelledAt=nowStamp();log('Returns','Invoice cancelled',iv.no,V('rcWhy'));save();toast('Invoice cancelled.');render()};return}
     f.innerHTML=`<h3>${k==='udhaar'?'Stock returned against credit':'Item return'}</h3><div class="grid">
-      ${F('Date',inp('rDate',today(),'date'))}${F('Shop',sel('rShop',shops.map(s=>({v:s.id,t:s.name})),'','Select'),'full-m')}
+      ${F('Date',inp('rDate',today(),'date'))}${F('Shop',sel('rShop',shops.map(s=>({v:s.id,t:shopLabel(s)})),'','Select'),'full-m')}
       ${F('Product',sel('rProd',prodOpt,'','Select'),'full-m')}${F('Pieces',inp('rPcs','','number'))}${F('Rate / pc',inp('rRate','','number','step="0.01"'))}
       ${k==='item'?F('Settle',sel('rSettle',[{v:'credit',t:'Minus from shop balance'},{v:'cash',t:'Cash refunded'}],'credit')):''}
       ${k==='item'?F('Cash account',sel('rAcc',accOptions(),'acc_cash')):''}
@@ -2694,6 +2694,7 @@ function editShop(s){const n=!s;s=s||{name:'',owner:'',phone:'',route:'',address
    [...(!n&&isAdmin()?[{t:'Delete',bad:1,fn:()=>{if(DB.invoices.some(i=>i.shopId===s.id))return toast('This shop has invoices and cannot be deleted.',true);confirmBox('Delete this shop?',()=>{DB.shops=DB.shops.filter(x=>x.id!==s.id);save();render()})}}]:[]),
     {t:'Save',pri:1,fn:()=>{if(!V('esN'))return toast('Enter the shop name.',true);
      const dup=DB.shops.find(x=>x!==s&&x.id!==s.id&&x.name.trim().toLowerCase()===V('esN').trim().toLowerCase()&&String(x.route||'').trim().toLowerCase()===V('esR').trim().toLowerCase());
+     if(dup&&!V('esA')&&!V('esO'))return toast('Same shop name already exists on this route. Enter the address or owner name so the two can be told apart.',true);
      if(dup&&!confirm('A shop named "'+dup.name+'" already exists on '+(dup.route?'route "'+dup.route+'"':'the same (empty) route')+(dup.address?' ('+dup.address+')':'')+'. Same name and route can cause recoveries to be entered on the wrong shop. Save anyway?'))return;
      Object.assign(s,{name:V('esN'),owner:V('esO'),phone:V('esP'),route:V('esR'),bookerId:V('esB'),address:V('esA'),creditLimit:N(V('esL')),opening:N(V('esOB')),openingDate:V('esOD')});
      if(n){s.id=uid();DB.shops.push(s)}log('Shops',n?'Shop added':'Shop edited',s.name);save();closeModal();render()}}]);
