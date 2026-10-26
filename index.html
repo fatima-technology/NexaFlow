@@ -671,6 +671,10 @@ body.mode-night #login .lg-mini-d span{background:#DCE8EE}body.mode-night #login
 .netbar .nb-btn{flex:0 0 auto;border:1px solid currentColor;background:transparent;color:inherit;border-radius:8px;padding:1px 10px;font:inherit;font-weight:700;cursor:pointer;clip-path:none}
 .netbar .nb-btn:disabled{opacity:.6;cursor:progress}
 body.has-netbar .top{top:26px}
+.actmenu{position:fixed;z-index:1000;min-width:180px;display:flex;flex-direction:column;gap:2px;padding:5px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.22)}
+.act-item{display:block;width:100%;text-align:left;padding:9px 12px;border:0;border-radius:7px;background:transparent;color:var(--ink);font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+.act-item:hover,.act-item:focus-visible{background:var(--soft-2);outline:none}
+.act-item.bad{color:var(--bad)}
 </style>
 <style>
 /* ===================== nexaFlow SLIDE LOGIN (NEON THEMES) : CSS START ===================== */
@@ -2599,9 +2603,8 @@ VIEWS.products=el=>{
    <div class="grid">${F('Search',inp('prQ','','search','placeholder="Name, brand, code"'))}${F('Brand',sel('prB',[...new Set(DB.products.map(p=>p.brand).filter(Boolean))].sort(),'','All'))}${F('Stock',sel('prS',[{v:'',t:'All'},{v:'low',t:'Low (under 1 ctn)'},{v:'out',t:'Out of stock'}],''))}${F('Status',sel('prA',[{v:'a',t:'Active'},{v:'i',t:'Inactive'}],'','All'))}</div><div id="prO" class="mt"></div></div>`;
   let rows=[];
   const run=()=>{const q=V('prQ').toLowerCase();rows=DB.products.filter(p=>(!q||[p.name,p.brand,p.sku].join(' ').toLowerCase().includes(q))&&(!V('prB')||p.brand===V('prB'))&&(!V('prA')||(V('prA')==='a')===isOn(p))).map(p=>({p,st:stockOf(p.id),c:costPerPc(p.id)})).filter(x=>!V('prS')||(V('prS')==='out'?x.st<=0:x.st<N(x.p.packing)));
-    $('#prO').innerHTML=table([{t:''},{t:'Product'},{t:'Code'},{t:'Brand'},{t:'Pack',n:1},{t:'Stock'},{t:'Pcs',n:1},{t:'Cost/pc',n:1},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Value',n:1},{t:'Action'}],rows.map(({p,st,c})=>[p.image?`<img class="thumb" src="${p.image}">`:'',esc(p.name)+(isOn(p)?'':' <span class="badge bad">Inactive</span>'),esc(p.sku||''),esc(p.brand||''),p.packing,`<span class="badge ${st<=0?'bad':st<N(p.packing)?'warn':'ok'}">${splitPcs(p,st)}</span>`,fmt(st),fmt(c),fmt(p.tradePc),fmt(p.retailPc),fmt(Math.max(0,st)*c),`<div class="row"><button class="btn sm" data-pl="${p.id}">📒 Ledger</button>${isAdmin()?`<button class="btn sm" data-pe="${p.id}">✏️ Edit</button><button class="btn sm" data-pt="${p.id}">${isOn(p)?'⏸️ Deactivate':'▶️ Activate'}</button><button class="btn sm bad" data-pd="${p.id}">🗑️ Delete</button>`:''}</div>`]),['','','','','','',fmt(sum(rows,x=>x.st)),'','','',fmt(sum(rows,x=>Math.max(0,x.st)*x.c)),'']);
-    $$('#prO [data-pe]').forEach(b=>b.onclick=()=>editProduct(byId('products',b.dataset.pe)));$$('#prO [data-pl]').forEach(b=>b.onclick=()=>showProductLedger(byId('products',b.dataset.pl)));
-    $$('#prO [data-pt]').forEach(b=>b.onclick=()=>toggleProduct(byId('products',b.dataset.pt)));$$('#prO [data-pd]').forEach(b=>b.onclick=()=>deleteProduct(byId('products',b.dataset.pd)))};
+    $('#prO').innerHTML=table([{t:''},{t:'Product'},{t:'Code'},{t:'Brand'},{t:'Pack',n:1},{t:'Stock'},{t:'Pcs',n:1},{t:'Cost/pc',n:1},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Value',n:1},{t:'Action'}],rows.map(({p,st,c})=>[p.image?`<img class="thumb" src="${p.image}">`:'',esc(p.name)+(isOn(p)?'':' <span class="badge bad">Inactive</span>'),esc(p.sku||''),esc(p.brand||''),p.packing,`<span class="badge ${st<=0?'bad':st<N(p.packing)?'warn':'ok'}">${splitPcs(p,st)}</span>`,fmt(st),fmt(c),fmt(p.tradePc),fmt(p.retailPc),fmt(Math.max(0,st)*c),actBtn('prod',p.id)]),['','','','','','',fmt(sum(rows,x=>x.st)),'','','',fmt(sum(rows,x=>Math.max(0,x.st)*x.c)),'']);
+    $$('#prO [data-act="prod"]').forEach(b=>b.onclick=e=>{e.stopPropagation();const p=byId('products',b.dataset.id);if(p)showActMenu(b,productActions(p))})};
   ['prQ','prB','prS','prA'].forEach(i=>$('#'+i).oninput=run);run();
   const cols=[{t:'Product'},{t:'Code'},{t:'Brand'},{t:'Pack',n:1},{t:'Stock'},{t:'Pcs',n:1},{t:'Cost/pc',n:1},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Value',n:1}];
   const data=()=>rows.map(({p,st,c})=>[p.name,p.sku||'',p.brand||'',p.packing,splitPcs(p,st),st,r2(c),p.tradePc,p.retailPc,r2(Math.max(0,st)*c)]);
@@ -2696,15 +2699,31 @@ function approveRec(r){if(!r||r.status==='approved')return;r.status='approved';r
 /* =====================================================================
    SHOPS
    ===================================================================== */
+/* one "Action ▾" button per row: opens a small floating menu (fixed position, so table scrolling never clips it) */
+function closeActMenu(){const m=document.getElementById('actMenu');if(m)m.remove();document.removeEventListener('click',closeActMenu);document.removeEventListener('keydown',actMenuKey);window.removeEventListener('scroll',closeActMenu,true);window.removeEventListener('resize',closeActMenu)}
+function actMenuKey(e){if(e.key==='Escape')closeActMenu()}
+function showActMenu(btn,items){
+  const was=document.getElementById('actMenu')&&document.getElementById('actMenu').dataset.for===btn.dataset.key;closeActMenu();if(was)return;
+  const m=document.createElement('div');m.id='actMenu';m.className='actmenu';m.setAttribute('role','menu');m.dataset.for=btn.dataset.key||'';
+  items.forEach(it=>{const b=document.createElement('button');b.type='button';b.className='act-item'+(it.bad?' bad':'');b.setAttribute('role','menuitem');b.textContent=it.t;b.onclick=()=>{closeActMenu();it.fn()};m.appendChild(b)});
+  document.body.appendChild(m);const r=btn.getBoundingClientRect(),mh=m.offsetHeight,mw=m.offsetWidth;
+  m.style.top=Math.max(8,r.bottom+4+mh>innerHeight-8?r.top-mh-4:r.bottom+4)+'px';m.style.left=Math.min(Math.max(8,r.right-mw),innerWidth-mw-8)+'px';
+  setTimeout(()=>{if(document.getElementById('actMenu')===m){document.addEventListener('click',closeActMenu);document.addEventListener('keydown',actMenuKey);window.addEventListener('scroll',closeActMenu,true);window.addEventListener('resize',closeActMenu)}},0);
+  const f=m.querySelector('button');if(f)f.focus();
+}
+const actBtn=(kind,id)=>`<button class="btn sm" data-act="${kind}" data-key="${kind}:${id}" data-id="${id}" aria-haspopup="menu">Action ▾</button>`;
+function shopActions(s){const mgr=isAdmin()||ME.role==='kpo';
+  return[{t:'📒 Ledger',fn:()=>showLedger(s.id)},...(isOn(s)?[{t:'💰 Add payment',fn:()=>addShopPayment(s)}]:[]),
+    ...(mgr||s.bookerId===ME.id?[{t:'✏️ Edit',fn:()=>editShop(s)}]:[]),...(mgr?[{t:isOn(s)?'⏸️ Deactivate':'▶️ Activate',fn:()=>toggleShop(s)}]:[]),...(isAdmin()?[{t:'🗑️ Delete',bad:1,fn:()=>deleteShop(s)}]:[])]}
+function productActions(p){return[{t:'📒 Ledger',fn:()=>showProductLedger(p)},...(isAdmin()?[{t:'✏️ Edit',fn:()=>editProduct(p)},{t:isOn(p)?'⏸️ Deactivate':'▶️ Activate',fn:()=>toggleProduct(p)},{t:'🗑️ Delete',bad:1,fn:()=>deleteProduct(p)}]:[])]}
 VIEWS.shops=el=>{
   const shops=visibleShops(true);const bookers=usersByRole('booker');const mgr=isAdmin()||ME.role==='kpo';
   el.innerHTML=`<div class="card"><h3>Shops & routes<span class="sp"></span>${mgr?'<button class="btn sm" id="shImp">📥 Import (Excel / PDF / image)</button>':''}<button class="btn sm pri" id="shNew">+ New shop</button></h3>
    <div class="grid">${F('Search',inp('shQ','','search'))}${F('Route',sel('shR',[...new Set(shops.map(s=>s.route).filter(Boolean))].sort(),'','All routes'))}${isAdmin()?F('Booker',sel('shB',bookers.map(u=>({v:u.id,t:u.name||u.username})),'','All')):''}${F('Status',sel('shSt',[{v:'a',t:'Active'},{v:'i',t:'Inactive'}],'','All'))}</div><div id="shO" class="mt"></div></div>`;
   const run=()=>{const q=V('shQ').toLowerCase();const l=shops.filter(s=>(!q||[s.name,s.owner,s.phone].join(' ').toLowerCase().includes(q))&&(!V('shR')||s.route===V('shR'))&&(!V('shB')||s.bookerId===V('shB'))&&(!V('shSt')||(V('shSt')==='a')===isOn(s)));
     $('#shO').innerHTML=table([{t:'Shop'},{t:'Owner'},{t:'Phone'},{t:'Route'},{t:'Booker'},{t:'Limit',n:1},{t:'Balance',n:1},{t:'Action'}],l.map(s=>{const d=shopDue(s.id);return[esc(s.name)+(isOn(s)?'':' <span class="badge bad">Inactive</span>'),esc(s.owner||''),esc(s.phone||''),esc(s.route||''),esc((byId('users',s.bookerId)||{}).name||''),fmt(s.creditLimit),`<span class="${N(s.creditLimit)&&d>N(s.creditLimit)?'badge bad':''}">${fmt(d)}</span>`,
-      `<div class="row"><button class="btn sm" data-sl="${s.id}">📒 Ledger</button>${isOn(s)?`<button class="btn sm" data-sp="${s.id}">💰 Add payment</button>`:''}${mgr||s.bookerId===ME.id?`<button class="btn sm" data-se="${s.id}">✏️ Edit</button>`:''}${mgr?`<button class="btn sm" data-st="${s.id}">${isOn(s)?'⏸️ Deactivate':'▶️ Activate'}</button>`:''}${isAdmin()?`<button class="btn sm bad" data-sd="${s.id}">🗑️ Delete</button>`:''}</div>`]}),['',l.length+' shops','','','','',fmt(sum(l,s=>shopDue(s.id))),'']);
-    $$('[data-sl]').forEach(b=>b.onclick=()=>showLedger(b.dataset.sl));$$('[data-sp]').forEach(b=>b.onclick=()=>addShopPayment(byId('shops',b.dataset.sp)));
-    $$('[data-se]').forEach(b=>b.onclick=()=>editShop(byId('shops',b.dataset.se)));$$('[data-st]').forEach(b=>b.onclick=()=>toggleShop(byId('shops',b.dataset.st)));$$('[data-sd]').forEach(b=>b.onclick=()=>deleteShop(byId('shops',b.dataset.sd)))};
+      actBtn('shop',s.id)]}),['',l.length+' shops','','','','',fmt(sum(l,s=>shopDue(s.id))),'']);
+    $$('#shO [data-act="shop"]').forEach(b=>b.onclick=e=>{e.stopPropagation();const s=byId('shops',b.dataset.id);if(s)showActMenu(b,shopActions(s))})};
   ['shQ','shR','shB','shSt'].forEach(i=>$('#'+i)&&($('#'+i).oninput=run));run();
   $('#shNew').onclick=()=>editShop(null);if($('#shImp'))$('#shImp').onclick=()=>openImport('shops');
 };
