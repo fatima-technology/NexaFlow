@@ -1718,7 +1718,25 @@ function autoMap(rows,target){
   else{hdr=-1;fields.forEach((f,i)=>{map[f[0]]=i})}
   return{hdr,map};
 }
-async function openImport(target,onDone){
+const IMPORT_EXAMPLES={
+  products:[['Surf Excel 1kg','SE-1K','Unilever','Detergent',12,2400,210,230,5,0]],
+  shops:[['Al-Madina General Store','Ahmed Ali','0300-1234567','Main Bazar','Shop 12, Main Bazar','booker1',50000,0]],
+  purchaseItems:[['Surf Excel 1kg','Unilever','Detergent',12,10,0,2400,210,230]]
+};
+function downloadImportFormat(target){
+  if(!window.XLSX)return toast('Excel library did not load. Please turn on the internet.',true);
+  const t=IMPORT_TARGETS[target];const ws=XLSX.utils.aoa_to_sheet([t.fields.map(f=>f[1]),...(IMPORT_EXAMPLES[target]||[])]);
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Format');XLSX.writeFile(wb,target+'_format.xlsx');
+}
+function openImport(target,onDone){
+  const T=IMPORT_TARGETS[target];const ex=(IMPORT_EXAMPLES[target]||[])[0]||[];
+  modal('Import: '+T.label,`<p class="note">Upload an Excel / CSV file (PDF, image or .txt also work). <b>Row 1 should be the column headings</b>, then one record per row. Column order does not matter — you will confirm the column match on the next screen.</p>
+   ${table([{t:'Column'},{t:'Required'},{t:'Example'}],T.fields.map((f,i)=>[esc(f[1]),f[2]?'Yes':'Optional',esc(ex[i]??'')]))}
+   <p class="small muted mt">Headings the system recognises automatically: ${T.fields.map(f=>esc(f[3].slice(0,3).join(' / '))).join(' • ')}</p>
+   <p class="note mt">Not sure? Download the sample file, fill it in and upload it.</p>`,
+   [{t:'📋 Download sample file',fn:()=>downloadImportFormat(target)},{t:'📂 Choose file',pri:1,fn:()=>importFromFile(target,onDone)}]);
+}
+async function importFromFile(target,onDone){
   const file=await pickFile('.xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,.txt');if(!file)return;
   let rows;try{rows=await readTabular(file)}catch(e){console.error(e);return toast(e.message,true)}
   if(!rows.length)return toast('No data found in the file.',true);
@@ -3185,7 +3203,7 @@ const DEV_TABS={
    <div class="row">${Object.entries(IMPORT_TARGETS).filter(([k])=>k!=='purchaseItems').map(([k,t])=>`<button class="btn pri" data-imp="${k}">📥 ${esc(t.label)}</button>`).join('')}</div>
    <h4 class="mt">Blank format (template) download</h4><div class="row">${Object.entries(IMPORT_TARGETS).map(([k,t])=>`<button class="btn sm" data-tpl="${k}">📋 ${esc(t.label)}</button>`).join('')}</div></div>`;
   $$('[data-imp]').forEach(b=>b.onclick=()=>openImport(b.dataset.imp));
-  $$('[data-tpl]').forEach(b=>b.onclick=()=>{if(!window.XLSX)return toast('Excel library did not load.',true);const t=IMPORT_TARGETS[b.dataset.tpl];const ws=XLSX.utils.aoa_to_sheet([t.fields.map(f=>f[1])]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Format');XLSX.writeFile(wb,b.dataset.tpl+'_format.xlsx')})}],
+  $$('[data-tpl]').forEach(b=>b.onclick=()=>downloadImportFormat(b.dataset.tpl))}],
  users:['Users & passwords',el=>{const all=DB.users;el.innerHTML=`<div class="card"><h3>All users (including admin)<span class="sp"></span><button class="btn sm pri" id="duNew">+ New user</button></h3>${table([{t:'Name'},{t:'Username'},{t:'Role'},{t:'Status'},{t:''}],all.map(u=>[esc(u.name),esc(u.username),u.role==='developer'?'Developer':ROLES[u.role],u.active===false?badge('Disabled','bad'):badge('Active','ok'),u.role==='developer'?'':`<button class="btn sm" data-due="${u.id}">✏️</button>`]))}</div>
    <div class="card"><h3>Developer login</h3><div class="grid">${F('Developer username',inp('ddU',ME.username))}${F('New password',inp('ddP','','password'))}</div><div class="row mt"><button class="btn pri" id="ddSave">💾 Save developer login</button></div></div>`;
   $('#duNew').onclick=()=>userEditor(null,true);$$('[data-due]').forEach(b=>b.onclick=()=>userEditor(byId('users',b.dataset.due),true));
