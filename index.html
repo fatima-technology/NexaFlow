@@ -1509,7 +1509,8 @@ function accOptions(){return DB.accounts.map(a=>({v:a.id,t:a.name}))}
 function staffList(){return DB.users.filter(u=>u.role!=='developer')}
 function usersByRole(r){return DB.users.filter(u=>u.role===r&&u.active!==false)}
 function shopLabel(s){return s.name+(s.route?' ('+s.route+')':'')+(s.address?' – '+s.address:'')}
-function visibleShops(){if(ME&&ME.role==='booker'&&S().bookerOwnShopsOnly)return DB.shops.filter(s=>s.bookerId===ME.id);return DB.shops}
+const isOn=x=>x.active!==false;
+function visibleShops(all){const l=ME&&ME.role==='booker'&&S().bookerOwnShopsOnly?DB.shops.filter(s=>s.bookerId===ME.id):DB.shops;return all?l:l.filter(isOn)}
 function pnl(from,to){
   const inv=activeInv().filter(i=>inRange(i.date,from,to));
   const sales=sum(inv,i=>i.net);const gross=sum(inv,i=>i.gross);const disc=sum(inv,i=>i.discount);const tax=sum(inv,i=>i.tax);
@@ -1989,7 +1990,7 @@ VIEWS._dash=el=>{
   const cash=sum(DB.accounts,a=>accountBalance(a.id));
   const pend=DB.recoveries.filter(r=>r.status==='pending');
   const todayRec=sum(approvedRec().filter(r=>(r.approvedDate||r.date)===t),r=>r.amount)+sum(DB.collections.filter(c=>c.date===t),c=>c.amount);
-  const low=DB.products.map(p=>[p,stockOf(p.id)]).filter(x=>x[1]<=N(x[0].packing)).slice(0,12);
+  const low=DB.products.filter(isOn).map(p=>[p,stockOf(p.id)]).filter(x=>x[1]<=N(x[0].packing)).slice(0,12);
   const bkAge=DB.meta.lastBackup?(Date.now()-DB.meta.lastBackup)/86400000:999;
   el.innerHTML=((DB.meta.reopen||DB.meta.pendingBackup)&&canSee('backup')?`<div class="note" style="margin-bottom:12px;border-color:#e0b25a;background:#fdf6e7">${DB.meta.reopen?'🔓 Day end was moved back to '+fmtDate(DB.meta.reopen.from)+' by the developer. Finish the entries and do Day End again.':''} ${DB.meta.pendingBackup?'⛔ Backup after Day End is not confirmed.':''} <button class="btn sm" data-go="backup">Open Backup & day end</button></div>`:'')+(bkAge>1&&canSee('backup')?`<div class="note" style="margin-bottom:12px;border-color:#e0b25a;background:#fdf6e7">⚠️ ${DB.meta.lastBackup?'Last backup was taken '+Math.floor(bkAge)+' day(s) ago.':'No backup has been taken yet.'} Data is stored only on this device. <button class="btn sm" data-go="backup">Take backup</button></div>`:'')+`<div class="kpis">
     <div class="kpi lead" role="button" tabindex="0" data-go="invoices" title="Open sales invoices"><small>Net sales today</small><b>${money(P.sales)}</b></div>
@@ -2017,7 +2018,7 @@ function posItemTotals(){const g=sum(POS.items,i=>i.gross),d=sum(POS.items,i=>i.
 VIEWS.pos=el=>{
   const ed=POS.editId?byId('invoices',POS.editId):null;
   if(!ed&&invLimitReached()){el.innerHTML=`<div class="card"><h3>Invoice limit reached</h3><p>${invUsed()} / ${N(LIC().limit)||200} invoices used. New invoices cannot be created until the full version is purchased.</p><div class="row mt"><button class="btn pri" id="posBuy">📞 Contact developer to purchase</button></div></div>`;$('#posBuy').onclick=showBuyDialog;return}
-  const shops=visibleShops();const bookers=usersByRole('booker');const sms=usersByRole('supplyman');
+  const shops=visibleShops();if(ed&&!shops.some(x=>x.id===ed.shopId)){const x=byId('shops',ed.shopId);if(x)shops.unshift(x)}const bookers=usersByRole('booker');const sms=usersByRole('supplyman');
   el.innerHTML=`<div class="card"><h3>${ed?'Invoice edit: '+esc(ed.no):'New order'}<span class="sp"></span>${ed?'<button class="btn sm bad" id="posCancelEdit">Cancel edit</button>':''}</h3>
    <div class="note hidden" id="pLock" style="border-color:var(--bad);margin-bottom:10px"></div>
    <div class="grid">
@@ -2031,7 +2032,7 @@ VIEWS.pos=el=>{
    </div><div class="prod-hint" id="pShopInfo"></div></div>
    <div class="card"><h3>Add products</h3>
     <div class="grid">
-     ${F('Product',`<input id="pProd" list="pProdList" placeholder="Type name or code"><datalist id="pProdList">${DB.products.map(p=>`<option value="${esc(p.name)}">${esc([p.sku,p.brand].filter(Boolean).join(' • '))}</option>`).join('')}</datalist>`,'wide')}
+     ${F('Product',`<input id="pProd" list="pProdList" placeholder="Type name or code"><datalist id="pProdList">${DB.products.filter(isOn).map(p=>`<option value="${esc(p.name)}">${esc([p.sku,p.brand].filter(Boolean).join(' • '))}</option>`).join('')}</datalist>`,'wide')}
      ${F('Cartons',inp('pCtn','','number','min="0" inputmode="numeric"'))}
      ${F('Pieces',inp('pPcs','','number','min="0" inputmode="numeric"'))}
      ${F('Trade price / pc',inp('pRate','','number','step="0.01" inputmode="decimal"'))}
@@ -2043,7 +2044,7 @@ VIEWS.pos=el=>{
     <div class="totals" id="pTotals"></div>
     <div class="row end mt"><button class="btn" id="pSave">💾 Save</button><button class="btn pri" id="pSavePrint">🖨️ Save & print</button></div>
    </div>`;
-  const findP=()=>{const v=V('pProd').toLowerCase();return DB.products.find(p=>p.name.toLowerCase()===v||(p.sku&&p.sku.toLowerCase()===v))};
+  const findP=()=>{const v=V('pProd').toLowerCase();return DB.products.filter(isOn).find(p=>p.name.toLowerCase()===v||(p.sku&&p.sku.toLowerCase()===v))};
   const shopInfo=()=>{const sh=byId('shops',V('pShop'));$('#pShopInfo').innerHTML=sh?`Outstanding: <b>${money(shopDue(sh.id)-(ed&&ed.shopId===sh.id?invDue(ed):0))}</b>${N(sh.creditLimit)?' • Credit limit: '+money(sh.creditLimit):''}${sh.phone?' • '+esc(sh.phone):''}`:''};
   const fillSM=()=>{const bk=V('pBooker'),cur=V('pSM')||(ed&&ed.supplymanId)||'';const list=sms.filter(u=>!bk||u.bookerId===bk||u.id===cur);
     $('#pSM').innerHTML=opt(list.map(u=>({v:u.id,t:u.name||u.username})),list.some(u=>u.id===cur)?cur:'','— later —')};
@@ -2483,7 +2484,7 @@ VIEWS.picklist=el=>{
 
 /* ---------- RETURNS ---------- */
 VIEWS.returns=el=>{
-  const shops=visibleShops();const prodOpt=DB.products.map(p=>({v:p.id,t:p.name}));
+  const shops=visibleShops();const prodOpt=DB.products.filter(isOn).map(p=>({v:p.id,t:p.name}));
   el.innerHTML=`<div class="tabs"><button class="on" data-rt="item">Item return</button><button data-rt="udhaar">Credit stock return</button><button data-rt="cancel">Full invoice cancel</button></div>
   <div class="card" id="rtForm"></div>
   <div class="card"><h3>Returns record</h3>${table([{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'},{t:'Reason'},{t:''}],DB.returns.slice().reverse().slice(0,300).map(r=>[fmtDate(r.date),r.kind==='udhaar'?'Credit return':'Item return',esc(r.shopName),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash refund':'Balance minus',r.toStock?badge('In stock','ok'):badge('Damaged','warn'),esc(r.reason||''),`<button class="btn sm" data-prt="${r.id}">🖨️</button>${isAdmin()?` <button class="btn sm bad" data-drt="${r.id}">🗑️</button>`:''}`]))}</div>`;
@@ -2513,7 +2514,7 @@ VIEWS.returns=el=>{
 VIEWS.claims=el=>{
   el.innerHTML=`<div class="card"><h3>Claim to company (damage / expiry)</h3><div class="grid">
    ${F('Date',inp('cDate',today(),'date'))}${F('Company / supplier',`<input id="cSup" list="cSupL"><datalist id="cSupL">${opt(supplierList())}</datalist>`)}
-   ${F('Product',sel('cProd',DB.products.map(p=>({v:p.id,t:p.name})),'','Select'),'full-m')}${F('Claim type',sel('cType',['Damage','Expiry','Short supply','Leakage','Other'],'Damage'))}
+   ${F('Product',sel('cProd',DB.products.filter(isOn).map(p=>({v:p.id,t:p.name})),'','Select'),'full-m')}${F('Claim type',sel('cType',['Damage','Expiry','Short supply','Leakage','Other'],'Damage'))}
    ${F('Pieces',inp('cPcs','','number'))}${F('Cost rate / pc',inp('cRate','','number','step="0.01"'))}
    ${F('Deduct from stock?',sel('cDed',[{v:'0',t:'No (damaged goods already separated)'},{v:'1',t:'Yes, deduct from stock'}],'0'))}${F('Reason',inp('cWhy'),'wide')}</div>
    <div class="row mt"><button class="btn pri" id="cGo">Save claim</button></div></div>
@@ -2541,7 +2542,7 @@ VIEWS.purchase=el=>{
     ${F('Payment now',inp('puPaid',ed?ed.paidNow:0,'number'))}${F('Payment account',sel('puAcc',accOptions(),ed?ed.accountId:'acc_cash'))}
     ${F('Invoice image',`<input id="puAtt" type="file" accept="image/*">`)}</div></div>
    <div class="card"><h3>Products</h3><div class="grid">
-    ${F('Product',`<input id="puProd" list="puProdL" placeholder="Select existing or type a new name"><datalist id="puProdL">${opt(DB.products.map(p=>p.name))}</datalist>`,'wide')}
+    ${F('Product',`<input id="puProd" list="puProdL" placeholder="Select existing or type a new name"><datalist id="puProdL">${opt(DB.products.filter(isOn).map(p=>p.name))}</datalist>`,'wide')}
     ${F('Brand',inp('puBrand'))}${F('Carton packing (pcs)',inp('puPack','','number'))}${F('Cartons',inp('puCtn','','number'))}${F('Loose pcs',inp('puPcs','','number'))}
     ${F('Cost / carton',inp('puCost','','number','step="0.01"'))}${F('Trade price / pc',inp('puTP','','number','step="0.01"'))}${F('Retail price / pc',inp('puRP','','number','step="0.01"'))}
     ${F('Product image',`<input id="puImg" type="file" accept="image/*">`)}</div>
@@ -2594,12 +2595,13 @@ VIEWS.suppliers=el=>{
 /* ---------- PRODUCTS & STOCK ---------- */
 VIEWS.products=el=>{
   el.innerHTML=`<div class="card"><h3>Products & live stock<span class="sp"></span>${isAdmin()?'<button class="btn sm" id="prImp">📥 Import (Excel / PDF / image)</button><button class="btn sm pri" id="prNew">+ New product</button>':''}<button class="btn sm" id="prXls">📊 Excel</button><button class="btn sm" id="prPrint">🖨️</button></h3>
-   <div class="grid">${F('Search',inp('prQ','','search','placeholder="Name, brand, code"'))}${F('Brand',sel('prB',[...new Set(DB.products.map(p=>p.brand).filter(Boolean))].sort(),'','All'))}${F('Stock',sel('prS',[{v:'',t:'All'},{v:'low',t:'Low (under 1 ctn)'},{v:'out',t:'Out of stock'}],''))}</div><div id="prO" class="mt"></div></div>`;
+   <div class="grid">${F('Search',inp('prQ','','search','placeholder="Name, brand, code"'))}${F('Brand',sel('prB',[...new Set(DB.products.map(p=>p.brand).filter(Boolean))].sort(),'','All'))}${F('Stock',sel('prS',[{v:'',t:'All'},{v:'low',t:'Low (under 1 ctn)'},{v:'out',t:'Out of stock'}],''))}${F('Status',sel('prA',[{v:'a',t:'Active'},{v:'i',t:'Inactive'}],'','All'))}</div><div id="prO" class="mt"></div></div>`;
   let rows=[];
-  const run=()=>{const q=V('prQ').toLowerCase();rows=DB.products.filter(p=>(!q||[p.name,p.brand,p.sku].join(' ').toLowerCase().includes(q))&&(!V('prB')||p.brand===V('prB'))).map(p=>({p,st:stockOf(p.id),c:costPerPc(p.id)})).filter(x=>!V('prS')||(V('prS')==='out'?x.st<=0:x.st<N(x.p.packing)));
-    $('#prO').innerHTML=table([{t:''},{t:'Product'},{t:'Code'},{t:'Brand'},{t:'Pack',n:1},{t:'Stock'},{t:'Pcs',n:1},{t:'Cost/pc',n:1},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Value',n:1},{t:''}],rows.map(({p,st,c})=>[p.image?`<img class="thumb" src="${p.image}">`:'',esc(p.name),esc(p.sku||''),esc(p.brand||''),p.packing,`<span class="badge ${st<=0?'bad':st<N(p.packing)?'warn':'ok'}">${splitPcs(p,st)}</span>`,fmt(st),fmt(c),fmt(p.tradePc),fmt(p.retailPc),fmt(Math.max(0,st)*c),isAdmin()?`<button class="btn sm" data-pe="${p.id}">✏️</button>`:'']),['','','','','','',fmt(sum(rows,x=>x.st)),'','','',fmt(sum(rows,x=>Math.max(0,x.st)*x.c)),'']);
-    $$('#prO [data-pe]').forEach(b=>b.onclick=()=>editProduct(byId('products',b.dataset.pe)))};
-  ['prQ','prB','prS'].forEach(i=>$('#'+i).oninput=run);run();
+  const run=()=>{const q=V('prQ').toLowerCase();rows=DB.products.filter(p=>(!q||[p.name,p.brand,p.sku].join(' ').toLowerCase().includes(q))&&(!V('prB')||p.brand===V('prB'))&&(!V('prA')||(V('prA')==='a')===isOn(p))).map(p=>({p,st:stockOf(p.id),c:costPerPc(p.id)})).filter(x=>!V('prS')||(V('prS')==='out'?x.st<=0:x.st<N(x.p.packing)));
+    $('#prO').innerHTML=table([{t:''},{t:'Product'},{t:'Code'},{t:'Brand'},{t:'Pack',n:1},{t:'Stock'},{t:'Pcs',n:1},{t:'Cost/pc',n:1},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Value',n:1},{t:'Action'}],rows.map(({p,st,c})=>[p.image?`<img class="thumb" src="${p.image}">`:'',esc(p.name)+(isOn(p)?'':' <span class="badge bad">Inactive</span>'),esc(p.sku||''),esc(p.brand||''),p.packing,`<span class="badge ${st<=0?'bad':st<N(p.packing)?'warn':'ok'}">${splitPcs(p,st)}</span>`,fmt(st),fmt(c),fmt(p.tradePc),fmt(p.retailPc),fmt(Math.max(0,st)*c),`<div class="row"><button class="btn sm" data-pl="${p.id}">📒 Ledger</button>${isAdmin()?`<button class="btn sm" data-pe="${p.id}">✏️ Edit</button><button class="btn sm" data-pt="${p.id}">${isOn(p)?'⏸️ Deactivate':'▶️ Activate'}</button><button class="btn sm bad" data-pd="${p.id}">🗑️ Delete</button>`:''}</div>`]),['','','','','','',fmt(sum(rows,x=>x.st)),'','','',fmt(sum(rows,x=>Math.max(0,x.st)*x.c)),'']);
+    $$('#prO [data-pe]').forEach(b=>b.onclick=()=>editProduct(byId('products',b.dataset.pe)));$$('#prO [data-pl]').forEach(b=>b.onclick=()=>showProductLedger(byId('products',b.dataset.pl)));
+    $$('#prO [data-pt]').forEach(b=>b.onclick=()=>toggleProduct(byId('products',b.dataset.pt)));$$('#prO [data-pd]').forEach(b=>b.onclick=()=>deleteProduct(byId('products',b.dataset.pd)))};
+  ['prQ','prB','prS','prA'].forEach(i=>$('#'+i).oninput=run);run();
   const cols=[{t:'Product'},{t:'Code'},{t:'Brand'},{t:'Pack',n:1},{t:'Stock'},{t:'Pcs',n:1},{t:'Cost/pc',n:1},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Value',n:1}];
   const data=()=>rows.map(({p,st,c})=>[p.name,p.sku||'',p.brand||'',p.packing,splitPcs(p,st),st,r2(c),p.tradePc,p.retailPc,r2(Math.max(0,st)*c)]);
   $('#prXls').onclick=()=>exportExcel('Stock report',cols,data());
@@ -2607,12 +2609,29 @@ VIEWS.products=el=>{
   if($('#prImp'))$('#prImp').onclick=()=>openImport('products');
   if($('#prNew'))$('#prNew').onclick=()=>editProduct(null);
 };
+function toggleProduct(p){if(!p)return;p.active=!isOn(p);log('Products',p.active?'Product activated':'Product deactivated',p.name);save();toast(p.name+(p.active?' is active again.':' deactivated. It is hidden from new invoices, purchases, returns and claims.'));render()}
+function deleteProduct(p){if(!p)return;
+  const used=DB.invoices.some(i=>i.items.some(x=>x.productId===p.id))||DB.purchases.some(i=>i.items.some(x=>x.productId===p.id))||DB.returns.some(r=>r.productId===p.id)||DB.claims.some(c=>c.productId===p.id);
+  if(used)return toast('This product has invoices / purchases / returns / claims and cannot be deleted. Deactivate it instead.',true);
+  confirmBox('Delete this product?',()=>{DB.products=DB.products.filter(x=>x.id!==p.id);log('Products','Product deleted',p.name);save();render()})}
+function showProductLedger(p){if(!p)return;
+  const mv=[];const add=(date,type,ref,q,note)=>mv.push({date:date||'',type,ref:ref||'',q:N(q),note:note||''});
+  DB.purchases.forEach(pu=>pu.items.forEach(it=>{if(it.productId===p.id)add(pu.date,'Purchase',pu.no,it.pcs,pu.supplier)}));
+  activeInv().forEach(iv=>iv.items.forEach(it=>{if(it.productId===p.id)add(iv.date,'Sale',iv.no,-N(it.pcs),iv.shopName)}));
+  DB.returns.forEach(r=>{if(r.toStock&&r.productId===p.id)add(r.date,'Return',r.no||'Return',r.pcs,r.reason||r.shopName)});
+  DB.claims.forEach(c=>{if(c.deductStock&&c.productId===p.id)add(c.date,'Claim',c.no||'Claim',-N(c.pcs),c.reason||c.company)});
+  mv.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  let bal=N(p.openingPcs);const rows=[['','Opening stock','','','',fmt(bal),'']];
+  mv.forEach(m=>{bal+=m.q;rows.push([m.date?fmtDate(m.date):'',esc(m.type),esc(m.ref),m.q>0?fmt(m.q):'',m.q<0?fmt(-m.q):'',fmt(bal),esc(m.note)])});
+  modal('Stock ledger: '+p.name,`<div class="prod-hint">Pack: <b>${productPcs(p)} pcs/ctn</b> • Stock now: <b>${splitPcs(p,stockOf(p.id))}</b> (${fmt(stockOf(p.id))} pcs)</div><div class="mt">${table([{t:'Date'},{t:'Entry'},{t:'Ref'},{t:'In (pcs)',n:1},{t:'Out (pcs)',n:1},{t:'Balance (pcs)',n:1},{t:'Note'}],rows)}</div>`);
+  $('.modal').classList.add('wide');
+}
 function editProduct(p){
   const n=!p;p=p||{name:'',sku:'',brand:'',category:'General',packing:12,costCtn:0,tradePc:0,retailPc:0,openingPcs:0};
   modal(n?'New product':'Edit product',`<div class="grid">${F('Name',inp('epN',p.name),'wide')}${F('Code / SKU',inp('epS',p.sku))}${F('Brand',inp('epB',p.brand))}${F('Category',inp('epC',p.category))}${F('Carton packing',inp('epP',p.packing,'number'))}
    ${F('Cost / carton',inp('epCost',p.costCtn,'number'))}${F('Trade / pc',inp('epT',p.tradePc,'number'))}${F('Retail / pc',inp('epR',p.retailPc,'number'))}
    ${F('Opening stock (cartons)',inp('epOC',Math.floor(N(p.openingPcs)/(N(p.packing)||1)),'number'))}${F('Opening loose pcs',inp('epOP',N(p.openingPcs)%(N(p.packing)||1),'number'))}${F('Image',`<input id="epI" type="file" accept="image/*">`)}</div>`,
-   [...(!n?[{t:'Delete',bad:1,fn:()=>{const used=DB.invoices.some(i=>i.items.some(x=>x.productId===p.id))||DB.purchases.some(i=>i.items.some(x=>x.productId===p.id));if(used)return toast('This product has invoices / purchases and cannot be deleted.',true);confirmBox('Delete this product?',()=>{DB.products=DB.products.filter(x=>x.id!==p.id);save();render()})}}]:[]),
+   [...(!n?[{t:'Delete',bad:1,fn:()=>deleteProduct(p)}]:[]),
     {t:'Save',pri:1,fn:async()=>{if(!V('epN'))return toast('Enter a name.',true);const pk=N(V('epP'))||1;
      Object.assign(p,{name:V('epN'),sku:V('epS'),brand:V('epB'),category:V('epC'),packing:pk,costCtn:N(V('epCost')),tradePc:N(V('epT')),retailPc:N(V('epR')),openingPcs:N(V('epOC'))*pk+N(V('epOP'))});
      const f=$('#epI').files[0];if(f)p.image=await readImage(f,160,.75);if(n){p.id=uid();DB.products.push(p)}log('Products',n?'Product added':'Product edited',p.name);save();closeModal();render()}}]);
@@ -2677,21 +2696,33 @@ function approveRec(r){if(!r||r.status==='approved')return;r.status='approved';r
    SHOPS
    ===================================================================== */
 VIEWS.shops=el=>{
-  const shops=visibleShops();const bookers=usersByRole('booker');
-  el.innerHTML=`<div class="card"><h3>Shops & routes<span class="sp"></span>${isAdmin()||ME.role==='kpo'?'<button class="btn sm" id="shImp">📥 Import (Excel / PDF / image)</button>':''}<button class="btn sm pri" id="shNew">+ New shop</button></h3>
-   <div class="grid">${F('Search',inp('shQ','','search'))}${F('Route',sel('shR',[...new Set(shops.map(s=>s.route).filter(Boolean))].sort(),'','All routes'))}${isAdmin()?F('Booker',sel('shB',bookers.map(u=>({v:u.id,t:u.name||u.username})),'','All')):''}</div><div id="shO" class="mt"></div></div>`;
-  const run=()=>{const q=V('shQ').toLowerCase();const l=shops.filter(s=>(!q||[s.name,s.owner,s.phone].join(' ').toLowerCase().includes(q))&&(!V('shR')||s.route===V('shR'))&&(!V('shB')||s.bookerId===V('shB')));
-    $('#shO').innerHTML=table([{t:'Shop'},{t:'Owner'},{t:'Phone'},{t:'Route'},{t:'Booker'},{t:'Limit',n:1},{t:'Balance',n:1},{t:''}],l.map(s=>{const d=shopDue(s.id);return[esc(s.name),esc(s.owner||''),esc(s.phone||''),esc(s.route||''),esc((byId('users',s.bookerId)||{}).name||''),fmt(s.creditLimit),`<span class="${N(s.creditLimit)&&d>N(s.creditLimit)?'badge bad':''}">${fmt(d)}</span>`,`<div class="row"><button class="btn sm" data-sl="${s.id}">📒 Ledger</button>${isAdmin()||ME.role==='kpo'||s.bookerId===ME.id?`<button class="btn sm" data-se="${s.id}">✏️</button>`:''}</div>`]}),['',l.length+' shops','','','','',fmt(sum(l,s=>shopDue(s.id))),'']);
-    $$('[data-sl]').forEach(b=>b.onclick=()=>showLedger(b.dataset.sl));$$('[data-se]').forEach(b=>b.onclick=()=>editShop(byId('shops',b.dataset.se)))};
-  ['shQ','shR','shB'].forEach(i=>$('#'+i)&&($('#'+i).oninput=run));run();
+  const shops=visibleShops(true);const bookers=usersByRole('booker');const mgr=isAdmin()||ME.role==='kpo';
+  el.innerHTML=`<div class="card"><h3>Shops & routes<span class="sp"></span>${mgr?'<button class="btn sm" id="shImp">📥 Import (Excel / PDF / image)</button>':''}<button class="btn sm pri" id="shNew">+ New shop</button></h3>
+   <div class="grid">${F('Search',inp('shQ','','search'))}${F('Route',sel('shR',[...new Set(shops.map(s=>s.route).filter(Boolean))].sort(),'','All routes'))}${isAdmin()?F('Booker',sel('shB',bookers.map(u=>({v:u.id,t:u.name||u.username})),'','All')):''}${F('Status',sel('shSt',[{v:'a',t:'Active'},{v:'i',t:'Inactive'}],'','All'))}</div><div id="shO" class="mt"></div></div>`;
+  const run=()=>{const q=V('shQ').toLowerCase();const l=shops.filter(s=>(!q||[s.name,s.owner,s.phone].join(' ').toLowerCase().includes(q))&&(!V('shR')||s.route===V('shR'))&&(!V('shB')||s.bookerId===V('shB'))&&(!V('shSt')||(V('shSt')==='a')===isOn(s)));
+    $('#shO').innerHTML=table([{t:'Shop'},{t:'Owner'},{t:'Phone'},{t:'Route'},{t:'Booker'},{t:'Limit',n:1},{t:'Balance',n:1},{t:'Action'}],l.map(s=>{const d=shopDue(s.id);return[esc(s.name)+(isOn(s)?'':' <span class="badge bad">Inactive</span>'),esc(s.owner||''),esc(s.phone||''),esc(s.route||''),esc((byId('users',s.bookerId)||{}).name||''),fmt(s.creditLimit),`<span class="${N(s.creditLimit)&&d>N(s.creditLimit)?'badge bad':''}">${fmt(d)}</span>`,
+      `<div class="row"><button class="btn sm" data-sl="${s.id}">📒 Ledger</button>${isOn(s)?`<button class="btn sm" data-sp="${s.id}">💰 Add payment</button>`:''}${mgr||s.bookerId===ME.id?`<button class="btn sm" data-se="${s.id}">✏️ Edit</button>`:''}${mgr?`<button class="btn sm" data-st="${s.id}">${isOn(s)?'⏸️ Deactivate':'▶️ Activate'}</button>`:''}${isAdmin()?`<button class="btn sm bad" data-sd="${s.id}">🗑️ Delete</button>`:''}</div>`]}),['',l.length+' shops','','','','',fmt(sum(l,s=>shopDue(s.id))),'']);
+    $$('[data-sl]').forEach(b=>b.onclick=()=>showLedger(b.dataset.sl));$$('[data-sp]').forEach(b=>b.onclick=()=>addShopPayment(byId('shops',b.dataset.sp)));
+    $$('[data-se]').forEach(b=>b.onclick=()=>editShop(byId('shops',b.dataset.se)));$$('[data-st]').forEach(b=>b.onclick=()=>toggleShop(byId('shops',b.dataset.st)));$$('[data-sd]').forEach(b=>b.onclick=()=>deleteShop(byId('shops',b.dataset.sd)))};
+  ['shQ','shR','shB','shSt'].forEach(i=>$('#'+i)&&($('#'+i).oninput=run));run();
   $('#shNew').onclick=()=>editShop(null);if($('#shImp'))$('#shImp').onclick=()=>openImport('shops');
 };
+function toggleShop(s){if(!s)return;s.active=!isOn(s);log('Shops',s.active?'Shop activated':'Shop deactivated',s.name);save();toast(s.name+(s.active?' is active again.':' deactivated. It is hidden from new invoices, recoveries and returns.'));render()}
+function deleteShop(s){if(!s)return;
+  if(DB.invoices.some(i=>i.shopId===s.id)||DB.recoveries.some(r=>r.shopId===s.id)||DB.collections.some(c=>c.shopId===s.id)||DB.returns.some(r=>r.shopId===s.id))return toast('This shop has invoices / payments / returns and cannot be deleted. Deactivate it instead.',true);
+  confirmBox('Delete this shop?',()=>{DB.shops=DB.shops.filter(x=>x.id!==s.id);log('Shops','Shop deleted',s.name);save();render()})}
+function addShopPayment(s){if(!s)return;const due=Math.max(0,r2(shopDue(s.id)));const wait=S().recoveryNeedsApproval&&!isAdmin();
+  modal('Add payment: '+s.name,`<div class="prod-hint">Balance due: <b>${money(shopDue(s.id))}</b></div><div class="grid mt">${F('Date',inp('apD',today(),'date'))}${F('Amount received',inp('apA','','number','inputmode="decimal"'))}${F('Payment method',sel('apM',['Cash','Bank transfer','Easypaisa','JazzCash','Cheque'],'Cash'))}${F('Account',sel('apAcc',accOptions(),'acc_cash'))}${F('Note',inp('apN'),'wide')}</div>${wait?'<p class="note mt">This payment will be sent to the admin for approval.</p>':''}`,
+   [{t:wait?'Send for approval':'Save payment',pri:1,fn:()=>{const amt=N(V('apA'));if(amt<=0)return toast('Enter the amount received.',true);if(!guard(V('apD')))return;
+     const r={id:uid(),date:V('apD'),collectorId:ME.id,collector:ME.name||ME.username,shopId:s.id,shopName:s.name,expected:due,amount:amt,short:Math.max(0,r2(due-amt)),adjustType:'none',adjust:0,staffId:'',staffName:'',method:V('apM'),accountId:V('apAcc')||'acc_cash',note:V('apN'),status:'pending',by:ME.username,at:nowStamp()};
+     DB.recoveries.push(r);if(!wait)approveRec(r);log('Recovery','Recovery submitted',s.name,money(amt));save();closeModal();toast(wait?'Sent for approval.':'Payment saved.');render()}}]);
+}
 function editShop(s){const n=!s;s=s||{name:'',owner:'',phone:'',route:'',address:'',creditLimit:N(S().defaultCreditLimit),opening:0,openingDate:today(),bookerId:ME.role==='booker'?ME.id:''};
   const routes=[...new Set(DB.shops.map(x=>x.route).filter(Boolean))];
   modal(n?'New shop':'Edit shop',`<div class="grid">${F('Shop name',inp('esN',s.name),'wide')}${F('Owner',inp('esO',s.owner))}${F('Phone',inp('esP',s.phone,'tel'))}${F('Route / area',`<input id="esR" list="esRL" value="${esc(s.route)}"><datalist id="esRL">${opt(routes)}</datalist>`)}
    ${F('Booker',ME.role==='booker'?`<input readonly value="${esc(ME.name)}"><input type="hidden" id="esB" value="${ME.id}">`:sel('esB',usersByRole('booker').map(u=>({v:u.id,t:u.name||u.username})),s.bookerId,'—'))}
    ${F('Address',inp('esA',s.address),'wide')}${F('Credit limit',inp('esL',s.creditLimit,'number',isAdmin()?'':'readonly'))}${F('Opening balance',inp('esOB',s.opening,'number',isAdmin()?'':'readonly'))}${F('Opening date',inp('esOD',s.openingDate,'date'))}</div>`,
-   [...(!n&&isAdmin()?[{t:'Delete',bad:1,fn:()=>{if(DB.invoices.some(i=>i.shopId===s.id))return toast('This shop has invoices and cannot be deleted.',true);confirmBox('Delete this shop?',()=>{DB.shops=DB.shops.filter(x=>x.id!==s.id);save();render()})}}]:[]),
+   [...(!n&&isAdmin()?[{t:'Delete',bad:1,fn:()=>deleteShop(s)}]:[]),
     {t:'Save',pri:1,fn:()=>{if(!V('esN'))return toast('Enter the shop name.',true);
      const dup=DB.shops.find(x=>x!==s&&x.id!==s.id&&x.name.trim().toLowerCase()===V('esN').trim().toLowerCase()&&String(x.route||'').trim().toLowerCase()===V('esR').trim().toLowerCase());
      if(dup&&!V('esA')&&!V('esO'))return toast('Same shop name already exists on this route. Enter the address or owner name so the two can be told apart.',true);
