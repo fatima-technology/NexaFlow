@@ -5,6 +5,9 @@ const fs = require('fs');
 // Ek hi window: dobara icon dabane par wohi khule
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
+// App hamesha live site se khulti hai: PR merge hote hi nayi version khud aa jati hai (offline cache sw.js se).
+const APP_URL = 'https://nexaflow.fatima-tech.workers.dev/';
+
 let win;
 function createWindow() {
   win = new BrowserWindow({
@@ -15,7 +18,11 @@ function createWindow() {
   });
   Menu.setApplicationMenu(null);
   win.maximize();
-  win.loadFile(path.join(__dirname, 'app', 'index.html'));
+  win.loadURL(APP_URL);
+  // Pehli baar net na ho (cache abhi bana nahi) to saaf paigham, data alag jagah nahi banta
+  win.webContents.on('did-fail-load', (e, code, desc, url, isMainFrame) => {
+    if (isMainFrame && code !== -3) win.loadFile(path.join(__dirname, 'offline.html'), { query: { u: APP_URL } });
+  });
   // Bahar ke links (http/https) default browser mein khulen
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
 }

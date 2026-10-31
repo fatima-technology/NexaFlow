@@ -1,13 +1,10 @@
-// Repo ki web files ko desktop/app mein copy karta hai aur firebase-config.json tayyar karta hai.
+// Sirf icons copy karta hai (app khud live site se khulti hai) aur firebase-config.json tayyar karta hai.
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..', '..');
 const dest = path.join(__dirname, '..', 'app');
 fs.rmSync(dest, { recursive: true, force: true });
 fs.mkdirSync(dest, { recursive: true });
-for (const f of ['index.html', 'styles.css', 'app.js', 'manifest.json']) {
-  if (fs.existsSync(path.join(root, f))) fs.copyFileSync(path.join(root, f), path.join(dest, f));
-}
 fs.cpSync(path.join(root, 'icons'), path.join(dest, 'icons'), { recursive: true });
 
 // Firebase config: pehle FIREBASE_CONFIG (GitHub secret), warna desktop/firebase-config.json, warna khali {}

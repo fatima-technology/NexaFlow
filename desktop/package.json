@@ -18,7 +18,7 @@
     "appId": "tech.fatima.nexaflow",
     "productName": "NexaFlow",
     "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "app/**/*"],
+    "files": ["main.js", "preload.js", "offline.html", "app/**/*"],
     "extraResources": [{ "from": "firebase-config.json", "to": "firebase-config.json" }],
     "win": { "target": "nsis", "icon": "app/icons/icon-512.png" },
     "nsis": { "oneClick": true, "perMachine": false, "createDesktopShortcut": true, "runAfterFinish": true }
