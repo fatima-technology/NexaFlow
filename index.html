@@ -1106,7 +1106,8 @@ const MODULES=[
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
   {id:'help',label:'User manual',icon:'📘',group:'System'},
   {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true},
-  {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'Developer',devOnly:true}
+  {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'Developer',devOnly:true},
+  {id:'cloudBackups',label:'Cloud backups',icon:'🗄️',group:'Developer',devOnly:true}
 ];
 const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man (no login)',staff:'Staff (no login)'};
 const NO_LOGIN=['staff','supplyman'];
@@ -2206,7 +2207,7 @@ const FS={cfg:null,auth:null,tok:null,noAuth:false,
 /* internet ka asli haal: navigator.onLine akela bharosemand nahi, is liye halka probe + har upload ka natija dekhte hain */
 const Net={reach:null,t:null,
   get up(){return navigator.onLine!==false&&this.reach!==false},
-  set(v){if(this.reach!==v){this.reach=v;NetBar.update()}},
+  set(v){if(this.reach!==v){this.reach=v;NetBar.update();if(v&&typeof CloudBackup!=='undefined')setTimeout(()=>CloudBackup.flush(),500)}},
   async probe(){
     if(navigator.onLine===false){this.set(false);return}
     const ac=new AbortController(),t=setTimeout(()=>ac.abort(),6000);
@@ -2222,7 +2223,7 @@ const Net={reach:null,t:null,
 const Orders={map:new Map(),days:new Map(),ready:false,syncing:false,last:null,persisted:null,_init:null,
   init(){return this._init||(this._init=(async()=>{
     await ODB.open();
-    if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load()}catch(e){console.error(e)}}
+    if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load();if(!FS.ok&&window.nexaDesktop&&nexaDesktop.firebaseConfig)await FS.save(JSON.stringify(nexaDesktop.firebaseConfig))}catch(e){console.error(e)}}
     try{if(navigator.storage&&navigator.storage.persist)Promise.resolve(navigator.storage.persisted()).then(v=>v||navigator.storage.persist()).then(v=>{this.persisted=v;if(CUR==='orderSync')deferRender()}).catch(()=>{})}catch(e){}
     this.ready=true})())},
   mine(date){return Array.from(this.map.values()).filter(o=>ME&&o.bookerId===ME.id&&(!date||o.date===date)).sort((a,b)=>a.createdAtMs-b.createdAtMs)},
@@ -2393,6 +2394,18 @@ service cloud.firestore {
                     && !closed(request.resource.data.bookerId, request.resource.data.date);
       allow delete: if false;
     }
+    // Cloud backups (Day End ka poora data): laptop sirf likh sakta hai, parh sirf owner (email/password se login) sakta hai
+    function owner() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    match /backups/{id} {
+      allow create: if signedIn();
+      allow read: if owner();
+      allow update, delete: if false;
+      match /parts/{part} {
+        allow create, update: if signedIn();
+        allow read: if owner();
+        allow delete: if false;
+      }
+    }
     // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
     match /dayEnds/{id} {
       allow read: if signedIn();
@@ -2420,6 +2433,85 @@ VIEWS.fsSettings=el=>{
   $('#fsTest').onclick=async()=>{if(!FS.ok)return msg('Pehle config save karein.','err');msg('Test ho raha hai…');try{await withTimeout(OSYNC.TIMEOUT,s=>FS.test(s));msg('Connection theek hai ✓','ok')}catch(e){msg('Connection fail: '+e.message+(e.http===403?' — Rules / Anonymous sign-in check karein.':''),'err')}};
   $('#fsClear').onclick=()=>confirmBox('Is device ka Firebase config hata dein? Pending orders phone mein safe rahenge.',async()=>{await FS.clear();Live.stop();render();toast('Config hata diya.')});
   $('#fsCopy').onclick=()=>{try{navigator.clipboard.writeText(FS_RULES);toast('Rules copy ho gaye.')}catch(e){toast('Copy nahi hua, khud select karein.',true)}};
+};
+
+/* ---------- CLOUD BACKUP (har Day End par poora data Firestore mein, owner ke liye) ----------
+   Admin jab "Day end + backup" karta hai to poora data gzip hokar Firestore `backups` mein jata hai.
+   Internet na ho to laptop par queue rehta hai aur net aate hi khud upload hota hai.
+   Owner (Developer) "Cloud backups" screen se apne Firebase email/password se login karke download karta hai. */
+const CloudBackup={
+  PART:250000,TIMEOUT:60000,busy:false,
+  async gz(str){
+    if(typeof CompressionStream==='undefined')return{enc:'json',data:str};
+    const s=new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));const b=await new Response(s).blob();
+    const url=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b)});
+    return{enc:'gzip-b64',data:url.slice(url.indexOf(',')+1)}},
+  async gunzip(enc,data){
+    if(enc==='json')return data;
+    const bin=Uint8Array.from(atob(data),c=>c.charCodeAt(0));
+    return await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text()},
+  async deviceId(){let r=await ODB.get('meta','deviceId').catch(()=>null);if(r&&r.v)return r.v;const v=uuid();await ODB.put('meta',{k:'deviceId',v}).catch(()=>{});return v},
+  /* Day End ke baad bulaya jata hai: queue mein daalo, phir foran upload ki koshish */
+  async queue(date){
+    try{
+      await Orders.init();
+      const {enc,data}=await this.gz(JSON.stringify(DB));
+      const dev=await this.deviceId();const host=(window.nexaDesktop&&nexaDesktop.hostname)||'';
+      const company=(S().companyName||'NexaFlow').trim();
+      const id=company.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_'+date+'_'+Date.now().toString(36);
+      const rec={k:'bk:'+id,v:{id,company,date,enc,data,by:ME?ME.username:'',device:dev,host,createdAtMs:Date.now(),size:data.length}};
+      await ODB.put('meta',rec);
+      const st=await this.flush();
+      toast(st.done?'☁️ Backup owner ke cloud par save ho gaya.':'☁️ Backup is laptop par save hai; internet aate hi khud cloud par chala jayega.',!st.done);
+    }catch(e){console.error(e);toast('Cloud backup queue nahi ho saka: '+e.message,true)}},
+  async pending(){try{return(await ODB.all('meta')).filter(r=>r.k&&r.k.startsWith('bk:'))}catch(e){return[]}},
+  async flush(){
+    const out={done:false,left:0};
+    if(this.busy)return out;this.busy=true;
+    try{
+      await Orders.init();const list=await this.pending();out.left=list.length;if(!list.length){out.done=true;return out}
+      if(!FS.ok||!Net.up)return out;
+      for(const r of list){
+        try{await this.upload(r.v);await ODB.del('meta',r.k);out.left--}catch(e){console.warn('Backup upload fail',e);if(e.net)break}}
+      out.done=out.left===0;
+    }finally{this.busy=false}
+    return out},
+  async upload(b){
+    const n=Math.max(1,Math.ceil(b.data.length/this.PART));
+    for(let i=0;i<n;i++)await withTimeout(this.TIMEOUT,s=>FS.req('/backups/'+encodeURIComponent(b.id)+'/parts/'+String(i).padStart(4,'0'),{method:'PATCH',body:FS.doc({n:i,data:b.data.slice(i*this.PART,(i+1)*this.PART)})},s));
+    /* main document sabse aakhir mein: yeh ho to backup mukammal hai */
+    await withTimeout(this.TIMEOUT,s=>FS.req('/backups/'+encodeURIComponent(b.id),{method:'PATCH',body:FS.doc({id:b.id,company:b.company,date:b.date,enc:b.enc,parts:n,size:b.size,by:b.by,device:b.device,host:b.host,createdAtMs:b.createdAtMs})},s))},
+  /* ---- owner side ---- */
+  ownerTok:null,
+  async ownerLogin(email,pass){
+    if(!FS.ok)throw new Error('Pehle Order sync settings mein Firebase config save karein.');
+    const r=await FS.call('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key='+encodeURIComponent(FS.cfg.apiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,returnSecureToken:true})}).catch(e=>{throw new Error(e.message==='INVALID_LOGIN_CREDENTIALS'||/PASSWORD|EMAIL|CREDENTIAL/.test(e.message)?'Email ya password galat hai.':e.message)});
+    this.ownerTok=r.idToken},
+  async ownerReq(path,opt){
+    const h={'Content-Type':'application/json',Authorization:'Bearer '+this.ownerTok};
+    return await FS.call(FS.base()+path,{...opt,headers:h})},
+  async list(){
+    const r=await this.ownerReq(':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'backups'}],orderBy:[{field:{fieldPath:'createdAtMs'},direction:'DESCENDING'}],limit:200}})});
+    return(r||[]).filter(x=>x.document).map(x=>FS.un(x.document))},
+  async fetch(b){
+    const r=await this.ownerReq('/backups/'+encodeURIComponent(b.id)+'/parts?pageSize=300');
+    const parts=(r.documents||[]).map(d=>FS.un(d)).sort((a,c)=>a.n-c.n);
+    if(parts.length!==N(b.parts))throw new Error('Backup ke hisse poore nahi mile.');
+    return await this.gunzip(b.enc,parts.map(p=>p.data).join(''))}
+};
+const CB={rows:null,err:''};
+VIEWS.cloudBackups=el=>{
+  el.innerHTML=`<div class="card"><h3>Cloud backups (har Day End ka data)</h3>
+    <p class="muted">Har laptop par jab admin Day End karta hai, poora data yahan aa jata hai. Dekhne ke liye apna <b>owner email/password</b> (Firebase Authentication mein banaya hua) daalein. Yeh sirf is screen par session ke liye use hota hai, save nahi hota.</p>
+    ${CloudBackup.ownerTok?'':`<div class="grid">${F('Owner email',inp('cbE','','email'))}${F('Password',inp('cbP','','password'))}</div><div class="row mt"><button class="btn pri" id="cbLogin">🔓 Login</button></div>`}
+    <p class="msg small" id="cbMsg">${esc(CB.err)}</p><div class="mt" id="cbOut"></div></div>`;
+  const msg=(t,k)=>{const m=$('#cbMsg');if(m){m.textContent=t;m.className='msg small '+(k||'')}};
+  const draw=()=>{const o=$('#cbOut');if(!o||!CB.rows)return;
+    o.innerHTML=table([{t:'Company'},{t:'Day End date'},{t:'Kisne'},{t:'Laptop'},{t:'Kab aaya'},{t:'Size',n:1},{t:''}],CB.rows.map((b,i)=>[esc(b.company),fmtDate(b.date),esc(b.by),esc(b.host||String(b.device||'').slice(0,8)),new Date(N(b.createdAtMs)).toLocaleString(),fmt(N(b.size)/1024)+' KB',`<button class="btn sm" data-dl="${i}">⬇ Download</button>`]));
+    $$('#cbOut [data-dl]').forEach(x=>x.onclick=async()=>{const b=CB.rows[+x.dataset.dl];x.disabled=true;try{const txt=await CloudBackup.fetch(b);const bl=new Blob([txt],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=b.company.replace(/[^\w-]+/g,'_')+'_dayend_'+b.date+'_'+b.id.split('_').pop()+'.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){toast(e.message,true)}x.disabled=false})};
+  const load=async()=>{msg('Backups la raha hai…');try{CB.rows=await CloudBackup.list();msg(CB.rows.length?'':'Abhi koi backup nahi aaya.');CB.err='';draw()}catch(e){CloudBackup.ownerTok=null;CB.err=e.message+(e.http===403?' — Rules update karke Publish karein aur owner account se login karein.':'');render()}};
+  if(CloudBackup.ownerTok)load();
+  if($('#cbLogin'))$('#cbLogin').onclick=async()=>{try{msg('Login ho raha hai…');await CloudBackup.ownerLogin(V('cbE'),V('cbP'));CB.err='';render()}catch(e){msg(e.message,'err')}};
 };
 
 /* ---------- DELIVERY DATES ---------- */
@@ -3165,7 +3257,7 @@ VIEWS.backup=el=>{
   if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(e=>{const u=$('#bkUse');if(u)u.textContent='Data size: '+fmt(JSON.stringify(DB).length/1048576)+' MB • Browser storage used: '+fmt((e.usage||0)/1048576)+' MB / '+fmt((e.quota||0)/1048576)+' MB'});$('#bkRs').onclick=restoreFromFile;
   $('#deGo').onclick=()=>{const d=V('deD');if(d>today())return toast('Day end cannot be done for a future date.',true);if(d<=lastClosed())return toast('Day end is already done up to '+fmtDate(lastClosed())+'.',true);const ro=DB.meta.reopen;if(ro&&d<ro.prevClosed)return toast('The developer reopened this period. Day end must be done for '+fmtDate(ro.prevClosed)+' or later.',true);const p=pnl(d,d);
     DB.meta.lastBackup=Date.now();DB.dayEnds.push({id:uid(),date:d,by:ME.username,at:nowStamp(),sales:p.sales,recovery:sum(approvedRec().filter(r=>(r.approvedDate||r.date)===d),r=>r.amount)+sum(DB.collections.filter(c=>c.date===d),c=>c.amount),exp:p.exp,cash:sum(DB.accounts,a=>accountBalance(a.id,d)),note:V('deN')});
-    log('Backup','Day end',d);if(ro)delete DB.meta.reopen;DB.meta.pendingBackup=d;save(true);
+    log('Backup','Day end',d);if(ro)delete DB.meta.reopen;DB.meta.pendingBackup=d;save(true);CloudBackup.queue(d);
     const dl=()=>{DB.meta.lastBackup=Date.now();downloadJSON(DB,backupName('dayend_'+d))};dl();
     const ok=()=>{if(confirm('Day end done for '+fmtDate(d)+'. Has the backup file downloaded and been saved? OK = yes, Cancel = download it again.')){delete DB.meta.pendingBackup;log('Backup','Day end backup confirmed',d);save();toast('Day end complete, backup saved.');render()}else{dl();setTimeout(ok,800)}};setTimeout(ok,800);render()};
   if($('#deOpen'))$('#deOpen').onclick=()=>{const l=DB.dayEnds.reduce((m,x)=>!m||x.date>m.date?x:m,null);modal('Move day end back',`<p>Last day end is <b>${fmtDate(l.date)}</b>. Choose the first date to open again; the day end moves to the day before it, so the admin can enter or change entries from that date onwards. The admin must then do Day End again (up to ${fmtDate(l.date)} or later) and take the backup. A backup of the current data is downloaded now.</p>${F('Open from date',inp('deFrom',l.date,'date','max="'+l.date+'"'))}${F('Reason',inp('deWhy'))}`,[{t:'Move day end back',bad:1,fn:()=>{const f=V('deFrom');if(!f||f>l.date)return toast('Choose a date on or before '+fmtDate(l.date)+'.',true);if(!V('deWhy'))return toast('Enter a reason.',true);

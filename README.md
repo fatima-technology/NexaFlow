@@ -27,3 +27,10 @@ The default theme is now **NexaFlow Modern** with a forest-green / mint palette,
 1. Firestore Database banayein. 2. Authentication → Anonymous enable karein. 3. `firestore.rules` ko Rules tab mein publish karein.
 Automatic deployment test
 Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-only rakhte hain. Note: app ka login Firebase Auth se juda nahi, is liye rules yeh nahi pehchan sakte ke request kis booker ne bheji; woh sirf (booker, date) ke Day End lock ko enforce karte hain.
+
+## Windows .exe (client laptop) + Day End cloud backup
+- `desktop/` mein Electron wrapper hai. App laptop par offline bhi chalti hai; data usi laptop par rehta hai.
+- **.exe kaise milega:** GitHub → Actions → **Build Windows exe** → *Run workflow*. 5-10 min baad us run ke neeche **Artifacts → NexaFlow-Windows-Setup** download karein (zip ke andar `NexaFlow Setup x.y.z.exe`). Wohi client laptop par chalayein.
+- **Firebase config exe mein kaise jaye:** repo Settings → Secrets and variables → Actions → New secret → naam `FIREBASE_CONFIG`, value = Firebase ka `firebaseConfig` JSON (keys double quotes mein). Phir exe dobara build karein. Config na ho to bhi app chalti hai (baad mein Developer → Order sync settings se dal sakte hain).
+- **Har Day End par:** admin "Backup & day end → Day end + backup" dabata hai to (1) backup `.json` khud `Documents\NexaFlow Backups` mein save hota hai, (2) poora data gzip hokar Firestore `backups` collection mein jata hai. Internet na ho to laptop par queue rehta hai aur net aate hi khud chala jata hai.
+- **Owner ke liye:** Firebase → Authentication → Email/Password enable karein, apna user banayein, `firestore.rules` Publish karein. Phir NexaFlow mein Developer login → **Cloud backups** → apna email/password → har Day End ki backup list se **Download**.

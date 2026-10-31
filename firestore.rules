@@ -18,6 +18,18 @@ service cloud.firestore {
                     && !closed(request.resource.data.bookerId, request.resource.data.date);
       allow delete: if false;
     }
+    // Cloud backups (Day End ka poora data): laptop sirf likh sakta hai, parh sirf owner (email/password se login) sakta hai
+    function owner() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    match /backups/{id} {
+      allow create: if signedIn();
+      allow read: if owner();
+      allow update, delete: if false;
+      match /parts/{part} {
+        allow create, update: if signedIn();
+        allow read: if owner();
+        allow delete: if false;
+      }
+    }
     // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
     match /dayEnds/{id} {
       allow read: if signedIn();

@@ -1,0 +1,26 @@
+{
+  "name": "nexaflow-desktop",
+  "productName": "NexaFlow",
+  "version": "1.0.0",
+  "description": "NexaFlow Distribution ERP - Windows desktop app",
+  "main": "main.js",
+  "author": "Fatima Technology",
+  "scripts": {
+    "start": "electron .",
+    "prepare-app": "node scripts/prepare-app.js",
+    "dist": "node scripts/prepare-app.js && electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "tech.fatima.nexaflow",
+    "productName": "NexaFlow",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "app/**/*"],
+    "extraResources": [{ "from": "firebase-config.json", "to": "firebase-config.json" }],
+    "win": { "target": "nsis", "icon": "app/icons/icon-512.png" },
+    "nsis": { "oneClick": true, "perMachine": false, "createDesktopShortcut": true, "runAfterFinish": true }
+  }
+}
