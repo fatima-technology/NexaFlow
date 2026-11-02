@@ -24,7 +24,7 @@ The default theme is now **NexaFlow Modern** with a forest-green / mint palette,
 - Admin:  **Booker orders (live)** mein sab bookers ke synced orders real-time dikhte hain.
 
 ### Firebase setup (ek baar)
-1. Firestore Database banayein. 2. Authentication → **Anonymous** aur **Email/Password** enable karein; master ka email/password user banayein. 3. `firestore.rules` mein `MASTER_EMAIL_YAHAN@example.com` ko master email se badal kar Rules tab mein publish karein.
+1. Firestore Database banayein. 2. Authentication → **Anonymous** aur **Email/Password** enable karein; master ka email/password user banayein. 3. `firestore.rules` mein `fatimatech96@gmail.com` ko master email se badal kar Rules tab mein publish karein.
 Automatic deployment test
 Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-only rakhte hain. Note: app ka login Firebase Auth se juda nahi, is liye rules yeh nahi pehchan sakte ke request kis booker ne bheji; woh sirf (booker, date) ke Day End lock ko enforce karte hain.
 
