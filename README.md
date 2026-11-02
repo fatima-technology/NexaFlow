@@ -20,11 +20,11 @@ The default theme is now **NexaFlow Modern** with a forest-green / mint palette,
 - Internet wapas aane par pending orders khud upload **nahi** hote; booker **Sync** dabata hai. Document ID = order UUID, is liye dobara Sync par duplicate nahi banta.
 - Synced orders phone se delete nahi hote; woh Day End tak IndexedDB mein rehte hain. `navigator.storage.persist()` mangi jati hai.
 - **Day End** (Sales → Sync & Day End): pending orders hon to band. Tasdeeq ke baad woh date us booker ke liye lock (sirf view). Day End Firestore (`dayEnds/{bookerId}_{date}`) mein bhi save hota hai aur admin ko dikhta hai.
-- Sirf developer: **Order sync settings** (Developer group) mein Firebase config paste karein (har device par ek baar; config code mein hardcode nahi). Admin aur booker ko yeh screen nahi dikhti.
+- Sirf developer: **Order sync settings** (Developer group) mein is device ka **Client code** daalein (har device par ek baar). Firebase project (`nexaflow-5f265`) ka web config ab app mein default hai. Admin aur booker ko yeh screen nahi dikhti.
 - Admin:  **Booker orders (live)** mein sab bookers ke synced orders real-time dikhte hain.
 
 ### Firebase setup (ek baar)
-1. Firestore Database banayein. 2. Authentication → Anonymous enable karein. 3. `firestore.rules` ko Rules tab mein publish karein.
+1. Firestore Database banayein. 2. Authentication → **Anonymous** aur **Email/Password** enable karein; master ka email/password user banayein. 3. `firestore.rules` mein `MASTER_EMAIL_YAHAN@example.com` ko master email se badal kar Rules tab mein publish karein.
 Automatic deployment test
 Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-only rakhte hain. Note: app ka login Firebase Auth se juda nahi, is liye rules yeh nahi pehchan sakte ke request kis booker ne bheji; woh sirf (booker, date) ke Day End lock ko enforce karte hain.
 
@@ -34,3 +34,10 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Firebase config exe mein kaise jaye:** repo Settings → Secrets and variables → Actions → New secret → naam `FIREBASE_CONFIG`, value = Firebase ka `firebaseConfig` JSON (keys double quotes mein). Phir exe dobara build karein. Config na ho to bhi app chalti hai (baad mein Developer → Order sync settings se dal sakte hain).
 - **Har Day End par:** admin "Backup & day end → Day end + backup" dabata hai to (1) backup `.json` khud `Documents\NexaFlow Backups` mein save hota hai, (2) poora data gzip hokar Firestore `backups` collection mein jata hai. Internet na ho to laptop par queue rehta hai aur net aate hi khud chala jata hai.
 - **Owner ke liye:** Firebase → Authentication → Email/Password enable karein, apna user banayein, `firestore.rules` Publish karein. Phir NexaFlow mein Developer login → **Cloud backups** → apna email/password → har Day End ki backup list se **Download**.
+
+## Multi-client (ek Firebase project, har client ka alag data) + expiry / fees
+- Sab clients ek hi Firebase project par hain. Har client ka data `clients/{CODE}/orders|dayEnds|backups` ke neeche alag jata hai. Code lamba random hota hai (`NX-XXXXXXXXXX`) taake andaza na lag sake.
+- **Master panel:** Developer login → **Clients (master)** → master email/password → **Naya client** (naam, fee, expiry). Code copy karke client ke laptop par Developer → **Order sync settings** mein daalein.
+- **Expiry / fees:** "+1 mahina" / "+1 saal" dabane se expiry aage barhti hai aur payment record hoti hai. "Band" karne par client foran block ho jata hai. Expire hone par client (admin/booker/...) ko "NexaFlow band hai" screen dikhti hai; **data delete nahi hota**. Developer login kabhi block nahi hota. Device license online hone par check karke yaad rakhta hai, isliye offline mein bhi expiry ki tareekh par band hota hai.
+- **Cloud backups** screen master login se sab clients ke backups dikhati hai (Client column ke saath).
+- Nota: client ka login Firebase Auth se juda nahi (anonymous auth), is liye client ka code hi uski hifazat hai; code kisi ko na batayein.

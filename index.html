@@ -1107,6 +1107,7 @@ const MODULES=[
   {id:'help',label:'User manual',icon:'📘',group:'System'},
   {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true},
   {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'Developer',devOnly:true},
+  {id:'clients',label:'Clients (master)',icon:'🏢',group:'Developer',devOnly:true},
   {id:'cloudBackups',label:'Cloud backups',icon:'🗄️',group:'Developer',devOnly:true}
 ];
 const ROLES={admin:'Admin',booker:'Order booker',storemanager:'Store Manager',kpo:'KPO / data entry',supplyman:'Supply man (no login)',staff:'Staff (no login)'};
@@ -1930,7 +1931,7 @@ function startApp(){
   $('#avatar').textContent=(ME.name||ME.username)[0].toUpperCase();$('#uName').textContent=ME.name||ME.username;$('#uRole').textContent=ME.role==='developer'?'Developer':ROLES[ME.role]||ME.role;
   $('#uMenuInfo').textContent=(ME.name||ME.username)+' • '+$('#uRole').textContent;
   tickClock();
-  Orders.init().then(()=>{Net.start();NetBar.update();if(['orderSync','invoices','fsSettings','liveOrders'].includes(CUR))deferRender()});
+  Orders.init().then(()=>{License.start();Net.start();NetBar.update();if(['orderSync','invoices','fsSettings','liveOrders'].includes(CUR))deferRender()});
   const h=location.hash.slice(1);go(h&&MODULES.some(m=>m.id===h)?h:'dashboard');
 }
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.kpi[data-go]')){e.preventDefault();go(e.target.dataset.go)}});
@@ -2164,12 +2165,22 @@ function withTimeout(ms,fn){
 }
 
 /* Firestore REST client */
-const FS={cfg:null,auth:null,tok:null,noAuth:false,
-  async load(){const r=await ODB.get('meta','fsConfig').catch(()=>null);this.cfg=null;if(r&&r.v){try{this.cfg=parseFbConfig(r.v.raw)}catch(e){}}const a=await ODB.get('meta','fsAuth').catch(()=>null);this.auth=a?a.v:null;this.tok=null},
-  async save(raw){const cfg=parseFbConfig(raw);await ODB.put('meta',{k:'fsConfig',v:{raw}});await ODB.del('meta','fsAuth').catch(()=>{});this.cfg=cfg;this.auth=null;this.tok=null;this.noAuth=false;return cfg},
-  async clear(){await ODB.del('meta','fsConfig');await ODB.del('meta','fsAuth').catch(()=>{});this.cfg=null;this.auth=null;this.tok=null},
-  get ok(){return !!(this.cfg&&this.cfg.projectId&&this.cfg.apiKey)},
+/* NexaFlow ka apna Firebase project. Web config public hota hai (secret nahi); asli hifazat Firestore rules se hoti hai. */
+const DEFAULT_FB={apiKey:"AIzaSyChUyMBuVTv6FS_731q4XY7EbOVCZukFDI",authDomain:"nexaflow-5f265.firebaseapp.com",projectId:"nexaflow-5f265",storageBucket:"nexaflow-5f265.firebasestorage.app",messagingSenderId:"398319507122",appId:"1:398319507122:web:7815fdd174d6463f5d9bab"};
+const FS={cfg:null,custom:false,code:'',auth:null,tok:null,noAuth:false,
+  async load(){const r=await ODB.get('meta','fsConfig').catch(()=>null);this.cfg=null;this.custom=false;if(r&&r.v){try{this.cfg=parseFbConfig(r.v.raw);this.custom=true}catch(e){}}if(!this.cfg)this.cfg={...DEFAULT_FB};
+    const c=await ODB.get('meta','clientCode').catch(()=>null);this.code=c&&c.v?String(c.v):'';
+    const a=await ODB.get('meta','fsAuth').catch(()=>null);this.auth=a?a.v:null;this.tok=null},
+  async save(raw){const cfg=parseFbConfig(raw);await ODB.put('meta',{k:'fsConfig',v:{raw}});await ODB.del('meta','fsAuth').catch(()=>{});this.cfg=cfg;this.custom=true;this.auth=null;this.tok=null;this.noAuth=false;return cfg},
+  async clear(){await ODB.del('meta','fsConfig');await ODB.del('meta','fsAuth').catch(()=>{});this.cfg={...DEFAULT_FB};this.custom=false;this.auth=null;this.tok=null},
+  cleanCode(v){return String(v||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'')},
+  async setCode(v){const c=this.cleanCode(v);if(c){await ODB.put('meta',{k:'clientCode',v:c})}else await ODB.del('meta','clientCode');this.code=c;return c},
+  get hasCfg(){return !!(this.cfg&&this.cfg.projectId&&this.cfg.apiKey)},
+  /* sync tab chalta hai jab config bhi ho aur is client ka code bhi */
+  get ok(){return this.hasCfg&&!!this.code},
   base(){return'https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(this.cfg.projectId)+'/databases/(default)/documents'},
+  /* har client ka data apne alag raaste par: clients/{CODE}/orders ... */
+  root(){return'/clients/'+encodeURIComponent(this.code)},
   async call(url,opt,sig){
     const r=await fetch(url,{...opt,signal:sig});let j=null;try{j=await r.json()}catch(e){}
     if(!r.ok){const er=j&&(j.error||(Array.isArray(j)&&j[0]&&j[0].error));const e=new Error((er&&er.message)||('HTTP '+r.status));e.http=r.status;e.status=er&&er.status;throw e}
@@ -2192,16 +2203,16 @@ const FS={cfg:null,auth:null,tok:null,noAuth:false,
   /* PATCH bina updateMask = poora document set (naya ya overwrite); ID = UUID, is liye duplicate mumkin nahi */
   putOrder(o,sig){
     const d={uuid:o.uuid,bookerId:o.bookerId,bookerName:o.bookerName,date:o.date,no:o.no,shopId:o.shopId||'',shopName:o.shopName,route:o.route||'',payType:o.payType,net:o.net,itemCount:o.itemCount,status:'synced',createdAtMs:o.createdAtMs,updatedAtMs:o.updatedAtMs,syncedAtMs:Date.now(),payload:o.payload||''};
-    return this.req('/orders/'+encodeURIComponent(o.uuid),{method:'PATCH',body:this.doc(d)},sig)},
+    return this.req(this.root()+'/orders/'+encodeURIComponent(o.uuid),{method:'PATCH',body:this.doc(d)},sig)},
   /* Day End document sirf ek baar ban sakta hai (create-only); dobara aaye to "pehle se band" = kamyab */
   async putDayEnd(d,sig){
-    const p='/dayEnds/'+encodeURIComponent(d.key);
+    const p=this.root()+'/dayEnds/'+encodeURIComponent(d.key);
     try{await this.req(p+'?currentDocument.exists=false',{method:'PATCH',body:this.doc({bookerId:d.bookerId,bookerName:d.bookerName,date:d.date,closedAtMs:d.closedAtMs,orderCount:d.orderCount,total:d.total})},sig)}
     catch(e){if(e.http===409||e.http===403||e.http===400){try{await this.req(p,{method:'GET'},sig);return}catch(e2){}}throw e}},
   async dayEnds(bookerId,sig){
-    const r=await this.req(':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'dayEnds'}],where:{fieldFilter:{field:{fieldPath:'bookerId'},op:'EQUAL',value:{stringValue:bookerId}}}}})},sig);
+    const r=await this.req(this.root()+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'dayEnds'}],where:{fieldFilter:{field:{fieldPath:'bookerId'},op:'EQUAL',value:{stringValue:bookerId}}}}})},sig);
     return(r||[]).filter(x=>x.document).map(x=>{const o=this.un(x.document);return{key:o.bookerId+'_'+o.date,bookerId:o.bookerId,bookerName:o.bookerName,date:o.date,closedAtMs:o.closedAtMs,orderCount:o.orderCount,total:o.total}})},
-  async test(sig){await this.req('/dayEnds?pageSize=1',{method:'GET'},sig)}
+  async test(sig){await this.req(this.root()+'/dayEnds?pageSize=1',{method:'GET'},sig)}
 };
 
 /* internet ka asli haal: navigator.onLine akela bharosemand nahi, is liye halka probe + har upload ka natija dekhte hain */
@@ -2223,7 +2234,7 @@ const Net={reach:null,t:null,
 const Orders={map:new Map(),days:new Map(),ready:false,syncing:false,last:null,persisted:null,_init:null,
   init(){return this._init||(this._init=(async()=>{
     await ODB.open();
-    if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load();if(!FS.ok&&window.nexaDesktop&&nexaDesktop.firebaseConfig)await FS.save(JSON.stringify(nexaDesktop.firebaseConfig))}catch(e){console.error(e)}}
+    if(ODB.db){try{(await ODB.all('orders')).forEach(o=>this.map.set(o.uuid,o));(await ODB.all('dayends')).forEach(d=>this.days.set(d.key,d));await FS.load();if(!FS.custom&&window.nexaDesktop&&nexaDesktop.firebaseConfig)await FS.save(JSON.stringify(nexaDesktop.firebaseConfig))}catch(e){console.error(e)}}
     try{if(navigator.storage&&navigator.storage.persist)Promise.resolve(navigator.storage.persisted()).then(v=>v||navigator.storage.persist()).then(v=>{this.persisted=v;if(CUR==='orderSync')deferRender()}).catch(()=>{})}catch(e){}
     this.ready=true})())},
   mine(date){return Array.from(this.map.values()).filter(o=>ME&&o.bookerId===ME.id&&(!date||o.date===date)).sort((a,b)=>a.createdAtMs-b.createdAtMs)},
@@ -2312,8 +2323,8 @@ const Live={orders:[],days:[],state:'off',err:'',cache:false,subs:[],_p:null,
         try{await app.auth().signInAnonymously()}catch(e){}
         const db=app.firestore();
         const bad=e=>{this.state='error';this.err=e.message;this.refresh()};
-        this.subs.push(db.collection('orders').orderBy('createdAtMs','desc').limit(1000).onSnapshot(s=>{this.orders=s.docs.map(d=>d.data());this.cache=!!(s.metadata&&s.metadata.fromCache);this.state='live';this.err='';this.refresh()},bad));
-        this.subs.push(db.collection('dayEnds').orderBy('closedAtMs','desc').limit(1000).onSnapshot(s=>{this.days=s.docs.map(d=>d.data());this.refresh()},bad));
+        this.subs.push(db.collection('clients').doc(FS.code).collection('orders').orderBy('createdAtMs','desc').limit(1000).onSnapshot(s=>{this.orders=s.docs.map(d=>d.data());this.cache=!!(s.metadata&&s.metadata.fromCache);this.state='live';this.err='';this.refresh()},bad));
+        this.subs.push(db.collection('clients').doc(FS.code).collection('dayEnds').orderBy('closedAtMs','desc').limit(1000).onSnapshot(s=>{this.days=s.docs.map(d=>d.data());this.refresh()},bad));
       }catch(e){this.state='error';this.err=e.message;this.refresh()}
       finally{this._p=null}})()},
   stop(){this.subs.forEach(u=>{try{u()}catch(e){}});this.subs=[];this.state='off'}
@@ -2378,61 +2389,167 @@ const FS_RULES=`rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function closed(b, d) { return exists(/databases/$(database)/documents/dayEnds/$(b + '_' + d)); }
+    // MASTER = sirf developer/owner ka Firebase Authentication (Email/Password) account.
+    // Neeche email ko apne asli master email se badal kar Publish karein.
+    function master() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.email == 'MASTER_EMAIL_YAHAN@example.com';
+    }
+    function closed(c, b, d) { return exists(/databases/$(database)/documents/clients/$(c)/dayEnds/$(b + '_' + d)); }
     function okOrder(o, id) {
       return o.uuid == id && o.bookerId is string && o.date is string
         && o.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && o.net is number;
     }
-    // Orders: Day End ho chuki date par koi write nahi (booker ke liye)
-    match /orders/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && okOrder(request.resource.data, id)
-                    && !closed(request.resource.data.bookerId, request.resource.data.date);
-      allow update: if signedIn() && okOrder(request.resource.data, id)
-                    && request.resource.data.bookerId == resource.data.bookerId
-                    && !closed(resource.data.bookerId, resource.data.date)
-                    && !closed(request.resource.data.bookerId, request.resource.data.date);
+
+    // Har client ka data alag: clients/{CODE}/...  (CODE lamba aur andaza na lagne wala hota hai)
+    // Client ki license (expiry / fees): app sirf apna document padh sakti hai (get), list nahi; likh sirf master sakta hai
+    match /clients/{c} {
+      allow get: if signedIn();
+      allow list: if master();
+      allow create, update: if master();
       allow delete: if false;
-    }
-    // Cloud backups (Day End ka poora data): laptop sirf likh sakta hai, parh sirf owner (email/password se login) sakta hai
-    function owner() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
-    match /backups/{id} {
-      allow create: if signedIn();
-      allow read: if owner();
-      allow update, delete: if false;
-      match /parts/{part} {
-        allow create, update: if signedIn();
-        allow read: if owner();
+
+      // Orders: Day End ho chuki date par koi write nahi (booker ke liye)
+      match /orders/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && okOrder(request.resource.data, id)
+                      && !closed(c, request.resource.data.bookerId, request.resource.data.date);
+        allow update: if signedIn() && okOrder(request.resource.data, id)
+                      && request.resource.data.bookerId == resource.data.bookerId
+                      && !closed(c, resource.data.bookerId, resource.data.date)
+                      && !closed(c, request.resource.data.bookerId, request.resource.data.date);
         allow delete: if false;
       }
+
+      // Cloud backups (Day End ka poora data): laptop sirf likh sakta hai, parh sirf master sakta hai
+      match /backups/{id} {
+        allow create: if signedIn();
+        allow read: if master();
+        allow update, delete: if false;
+        match /parts/{part} {
+          allow create, update: if signedIn();
+          allow read: if master();
+          allow delete: if false;
+        }
+      }
+
+      // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
+      match /dayEnds/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.bookerId is string && request.resource.data.date is string
+                      && id == request.resource.data.bookerId + '_' + request.resource.data.date;
+        allow update, delete: if false;
+      }
     }
-    // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
-    match /dayEnds/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.bookerId is string && request.resource.data.date is string
-                    && id == request.resource.data.bookerId + '_' + request.resource.data.date;
-      allow update, delete: if false;
+
+    // Master sab clients ke backups ek saath dekh sake (collection group query)
+    match /{path=**}/backups/{id} {
+      allow read: if master();
     }
   }
 }`;
 VIEWS.fsSettings=el=>{
-  const raw=FS.cfg?(JSON.stringify(FS.cfg,null,2)):'';
-  el.innerHTML=`<div class="card"><h3>Order sync settings (Firebase Firestore)</h3>
-    <p class="muted">Yeh setting is phone / computer par <b>ek baar</b> save hoti hai (developer is device par login karke). Jab tak config save nahi, app poori tarah offline chalti hai aur orders pending rehte hain.</p>
-    <p>Abhi: ${FS.ok?badge('Configured: '+esc(FS.cfg.projectId),'ok'):badge('Configure nahi hai','warn')}</p>
+  const raw=FS.custom?(JSON.stringify(FS.cfg,null,2)):'';
+  const L=License.st;
+  el.innerHTML=`<div class="card"><h3>Client code (is laptop / phone ka)</h3>
+    <p class="muted">Har client ko master panel (<b>Clients (master)</b>) se ek alag code milta hai. Yeh code is device par <b>ek baar</b> daalein. Is client ka sara data (orders, Day End, backups) usi code ke neeche alag jata hai, aur expiry / fees bhi isi se control hoti hai.</p>
+    <p>Abhi: ${FS.code?badge('Code: '+esc(FS.code),'ok'):badge('Code nahi daala — sync band','warn')} ${L?(L.missing?badge('Code cloud par nahi mila','bad'):badge((L.name||'Client')+' • '+License.label(L),License.blocked()?'bad':'ok')):''}</p>
+    <div class="grid">${F('Client code',inp('fsCode',FS.code,'text','placeholder="NX-XXXXXXXX" style="text-transform:uppercase"'))}</div>
+    <p class="msg small" id="fsCodeMsg"></p>
+    <div class="row mt"><button class="btn pri" id="fsCodeSave">💾 Code save karein</button><button class="btn" id="fsCodeCheck">🔄 License check</button></div></div>
+   <div class="card"><h3>Order sync settings (Firebase Firestore)</h3>
+    <p>Firebase: ${FS.hasCfg?badge('Connected project: '+esc(FS.cfg.projectId)+(FS.custom?' (custom)':' (default)'),'ok'):badge('Configure nahi hai','warn')}</p>
+    <details><summary class="small">Advanced: doosra Firebase config use karna ho to</summary>
     <div class="f"><label>Firebase config (console → Project settings → Your apps → firebaseConfig)</label><textarea id="fsCfg" rows="9" style="font-family:monospace;width:100%" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'>${esc(raw)}</textarea></div>
+    <div class="row mt"><button class="btn" id="fsSave">💾 Custom config save</button><button class="btn bad" id="fsClear">Default par wapas</button></div></details>
     <p class="msg small" id="fsMsg"></p>
-    <div class="row mt"><button class="btn pri" id="fsSave">💾 Save</button><button class="btn" id="fsTest">🔌 Connection test</button><button class="btn bad" id="fsClear">Hata dein</button></div></div>
+    <div class="row mt"><button class="btn" id="fsTest">🔌 Connection test</button></div></div>
    <div class="card"><h3>Firebase par ek baar ka setup</h3>
-    <ol class="small"><li>Firebase console mein project banayein → <b>Build → Firestore Database → Create database</b>.</li>
-    <li><b>Build → Authentication → Sign-in method → Anonymous</b> ko enable karein (rules ke liye).</li>
-    <li>Firestore <b>Rules</b> tab mein neeche wale rules paste karke <b>Publish</b> karein (repo mein <code>firestore.rules</code> file bhi hai).</li></ol>
+    <ol class="small"><li>Firebase console mein <b>Build → Firestore Database → Create database</b>.</li>
+    <li><b>Build → Authentication → Sign-in method</b> mein <b>Anonymous</b> (app ke liye) aur <b>Email/Password</b> (master ke liye) enable karein. Master ka user banayein.</li>
+    <li>Neeche wale rules mein <code>MASTER_EMAIL_YAHAN@example.com</code> ko apne master email se badlein, phir Firestore <b>Rules</b> tab mein paste karke <b>Publish</b> karein (repo mein <code>firestore.rules</code> bhi hai).</li></ol>
     <div class="row"><button class="btn sm" id="fsCopy">📋 Rules copy karein</button></div><pre class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;margin-top:8px">${esc(FS_RULES)}</pre></div>`;
   const msg=(t,k)=>{const m=$('#fsMsg');m.textContent=t;m.className='msg small '+(k||'')};
+  const cmsg=(t,k)=>{const m=$('#fsCodeMsg');m.textContent=t;m.className='msg small '+(k||'')};
+  $('#fsCodeSave').onclick=async()=>{try{await Orders.init();const c=await FS.setCode($('#fsCode').value);License.st=null;await ODB.del('meta','license').catch(()=>{});Live.stop();Net.probe();toast(c?'Client code save ho gaya.':'Client code hata diya.');if(c)await License.check(true);render()}catch(e){cmsg(e.message,'err')}};
+  $('#fsCodeCheck').onclick=async()=>{if(!FS.code)return cmsg('Pehle client code save karein.','err');cmsg('Check ho raha hai…');const r=await License.check(true);cmsg(r?'Check ho gaya ✓':'Internet nahi / server ne jawab nahi diya — purani license state use ho rahi hai.',r?'ok':'err');if(r)render()};
   $('#fsSave').onclick=async()=>{try{await Orders.init();const c=await FS.save($('#fsCfg').value);Net.probe();toast('Firebase config save ho gaya.');render();msg('Save ho gaya: '+c.projectId,'ok')}catch(e){msg(e.message,'err');toast(e.message,true)}};
-  $('#fsTest').onclick=async()=>{if(!FS.ok)return msg('Pehle config save karein.','err');msg('Test ho raha hai…');try{await withTimeout(OSYNC.TIMEOUT,s=>FS.test(s));msg('Connection theek hai ✓','ok')}catch(e){msg('Connection fail: '+e.message+(e.http===403?' — Rules / Anonymous sign-in check karein.':''),'err')}};
-  $('#fsClear').onclick=()=>confirmBox('Is device ka Firebase config hata dein? Pending orders phone mein safe rahenge.',async()=>{await FS.clear();Live.stop();render();toast('Config hata diya.')});
+  $('#fsTest').onclick=async()=>{if(!FS.ok)return msg('Pehle client code save karein.','err');msg('Test ho raha hai…');try{await withTimeout(OSYNC.TIMEOUT,s=>FS.test(s));msg('Connection theek hai ✓','ok')}catch(e){msg('Connection fail: '+e.message+(e.http===403?' — Rules / Anonymous sign-in check karein.':''),'err')}};
+  $('#fsClear').onclick=()=>confirmBox('Custom config hata kar default Firebase project par wapas jayein? Pending orders phone mein safe rahenge.',async()=>{await FS.clear();Live.stop();render();toast('Default config par wapas.')});
   $('#fsCopy').onclick=()=>{try{navigator.clipboard.writeText(FS_RULES);toast('Rules copy ho gaye.')}catch(e){toast('Copy nahi hua, khud select karein.',true)}};
+};
+
+/* ---------- LICENSE: client ki expiry / fees (clients/{CODE} document) ----------
+   Master panel se expiry set hoti hai. Device is document ko online hone par check karke apne paas yaad rakhta hai,
+   isliye internet na ho tab bhi expiry ki tareekh se app band ho jati hai. Developer login kabhi block nahi hota. */
+const License={st:null,_t:null,
+  async load(){const r=await ODB.get('meta','license').catch(()=>null);this.st=r&&r.v&&r.v.code===FS.code?r.v:null},
+  daysLeft(st){st=st||this.st;return st&&st.expiryMs>0?Math.ceil((st.expiryMs-Date.now())/864e5):null},
+  blocked(st){st=st||this.st;if(!st||isDev())return false;return !!(st.missing||st.active===false||(st.expiryMs>0&&Date.now()>st.expiryMs))},
+  label(st){st=st||this.st;if(!st)return'';if(st.active===false)return'Band (inactive)';const d=this.daysLeft(st);return d===null?'Koi expiry nahi':d<0?'Expire ho chuka ('+fmtDate(new Date(st.expiryMs).toISOString().slice(0,10))+')':d+' din baqi ('+fmtDate(new Date(st.expiryMs).toISOString().slice(0,10))+')'},
+  /* true = server se taaza state mili; false = net nahi, purani state chal rahi hai */
+  async check(force){
+    if(!FS.ok)return false;
+    let ok=false;
+    try{
+      const d=await withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root(),{method:'GET'},s));const o=FS.un(d);Net.set(true);
+      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),checkedAt:Date.now()};ok=true;
+    }catch(e){
+      if(e.http===404){this.st={code:FS.code,missing:true,checkedAt:Date.now()};ok=true}
+      else if(e.net)Net.set(false)
+    }
+    if(ok)await ODB.put('meta',{k:'license',v:this.st}).catch(()=>{});
+    this.gate();return ok},
+  gate(){
+    let el=document.getElementById('licBlock');
+    if(!ME||!this.blocked()){if(el)el.remove();return}
+    if(!el){el=document.createElement('div');el.id='licBlock';el.style.cssText='position:fixed;inset:0;z-index:9999;background:#0D3A50;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center';document.body.appendChild(el)}
+    const st=this.st;const why=st.missing?'Is device ka client code cloud par nahi mila. Developer se sahi code mangwayein.':st.active===false?'Aap ka account abhi band hai.':'Aap ki license / subscription khatam ho gayi hai ('+this.label(st)+').';
+    el.innerHTML=`<div style="max-width:420px"><div style="font-size:44px">🔒</div><h2 style="margin:10px 0">NexaFlow band hai</h2><p style="font-size:16px;line-height:1.5">${esc(why)}</p><p style="color:#C9DAE3">Chalu karne ke liye developer se rabta karein aur fees ada karein. Aap ka data is device par mehfooz hai, kuch delete nahi hua.</p><div class="row" style="justify-content:center;margin-top:16px"><button class="btn pri" id="licRe">🔄 Dobara check karein</button><button class="btn" id="licOut">Logout</button></div><p class="small" id="licMsg" style="color:#C9DAE3"></p></div>`;
+    document.getElementById('licRe').onclick=async()=>{document.getElementById('licMsg').textContent='Check ho raha hai…';const r=await this.check(true);if(this.blocked())document.getElementById('licMsg').textContent=r?'Abhi bhi license chalu nahi hai.':'Internet nahi hai.'};
+    document.getElementById('licOut').onclick=()=>{el.remove();logout()}},
+  async start(){
+    await Orders.init();await this.load();this.gate();
+    const d=this.daysLeft();if(this.st&&!this.blocked()&&d!==null&&d<=7&&d>=0)toast('License '+d+' din mein khatam hogi — fees ada kar dein.',true);
+    this.check();clearInterval(this._t);this._t=setInterval(()=>{if(ME&&!document.hidden)this.check()},30*60*1000)}
+};
+
+/* ---------- MASTER: Clients (code, expiry, fees) ---------- */
+const MC={rows:null,err:''};
+VIEWS.clients=el=>{
+  if(!isDev()){el.innerHTML='';return}
+  el.innerHTML=`<div class="card"><h3>Clients (master panel)<span class="sp"></span>${CloudBackup.ownerTok?'<button class="btn pri" id="mcNew">➕ Naya client</button>':''}</h3>
+    <p class="muted">Har client ka code, expiry aur fees yahan se control hoti hai. Sab clients ek hi Firebase project mein hain; har ka data apne code ke neeche alag. Master <b>email/password</b> (Firebase Authentication ka) session ke liye use hota hai, save nahi hota.</p>
+    ${CloudBackup.ownerTok?'':`<div class="grid">${F('Master email',inp('mcE','','email'))}${F('Password',inp('mcP','','password'))}</div><div class="row mt"><button class="btn pri" id="mcLogin">🔓 Master login</button></div>`}
+    <p class="msg small" id="mcMsg">${esc(MC.err)}</p><div class="mt" id="mcOut"></div></div>`;
+  const msg=(t,k)=>{const m=$('#mcMsg');if(m){m.textContent=t;m.className='msg small '+(k||'')}};
+  const dstr=ms=>ms>0?new Date(ms).toISOString().slice(0,10):'';
+  const save=async(code,o)=>{o={...o};delete o.code;await CloudBackup.ownerReq('/clients/'+encodeURIComponent(code),{method:'PATCH',body:FS.doc(o)})};
+  const load=async()=>{msg('Clients la raha hai…');try{
+      const r=await CloudBackup.ownerReq('/clients?pageSize=300');MC.rows=(r.documents||[]).map(d=>({...FS.un(d),code:d.name.split('/').pop()})).sort((a,b)=>String(a.name).localeCompare(String(b.name)));MC.err='';msg(MC.rows.length?'':'Abhi koi client nahi — "Naya client" dabayein.');draw()}
+    catch(e){CloudBackup.ownerTok=null;MC.err=e.message+(e.http===403?' — Rules update karke Publish karein (master email sahi daalein).':'');render()}};
+  const extend=(c,months)=>{const base=Math.max(Date.now(),N(c.expiryMs));const d=new Date(base);d.setMonth(d.getMonth()+months);
+    return{...c,expiryMs:d.getTime(),lastPaidMs:Date.now(),paidTotal:N(c.paidTotal)+N(c.fee)*months,active:true}};
+  const draw=()=>{const o=$('#mcOut');if(!o||!MC.rows)return;
+    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:''}],MC.rows.map((c,i)=>{
+      const d=c.expiryMs>0?Math.ceil((c.expiryMs-Date.now())/864e5):null;
+      const stt=c.active===false?badge('Band','bad'):d!==null&&d<0?badge('Expire','bad'):d!==null&&d<=7?badge(d+' din baqi','warn'):badge('Chalu','ok');
+      return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',
+        `<button class="btn sm" data-ed="${i}">Edit</button> <button class="btn sm" data-m1="${i}">💰 +1 mahina</button> <button class="btn sm" data-m12="${i}">+1 saal</button> <button class="btn sm" data-cp="${i}">📋 Code</button>`]}));
+    const bind=(attr,fn)=>$$('#mcOut ['+attr+']').forEach(x=>x.onclick=()=>fn(MC.rows[+x.getAttribute(attr)]));
+    bind('data-ed',c=>form(c));
+    const pay=(c,m)=>confirmBox(c.name+': '+m+' mahine ki fees mil gayi? Expiry aage barh jayegi.',async()=>{try{await save(c.code,extend(c,m));toast('Expiry barh gayi.');load()}catch(e){toast(e.message,true)}});
+    bind('data-m1',c=>pay(c,1));bind('data-m12',c=>pay(c,12));
+    bind('data-cp',c=>{try{navigator.clipboard.writeText(c.code);toast('Code copy ho gaya: '+c.code)}catch(e){toast(c.code)}})};
+  const newCode=()=>{const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const r=crypto.getRandomValues(new Uint8Array(10));return'NX-'+Array.from(r,x=>a[x%a.length]).join('')};
+  const form=(c)=>{const isNew=!c;c=c||{code:newCode(),name:'',fee:0,active:true,expiryMs:Date.now()+30*864e5,notes:''};
+    modal(isNew?'Naya client':'Client edit',`<div class="grid">${F('Client / company ka naam *',inp('mcN',c.name),'wide')}${F('Client code',inp('mcC',c.code,'text',isNew?'':'disabled'))}${F('Monthly fee',inp('mcF',c.fee,'number'))}${F('Expiry date (is din tak chalega)',inp('mcX',dstr(c.expiryMs),'date'))}${F('Status',sel('mcA',[{v:'1',t:'Chalu'},{v:'0',t:'Band (foran block)'}],c.active===false?'0':'1'))}${F('Note',inp('mcO',c.notes||''),'wide')}</div>${isNew?'<p class="small muted">Yeh code client ke laptop par Developer → Order sync settings mein daalna hai. Code lamba aur random hai taake koi doosra andaza na laga sake.</p>':''}`,
+      [{t:'💾 Save',pri:1,fn:async()=>{const name=V('mcN');const code=FS.cleanCode(V('mcC'));if(!name||code.length<6)return toast('Naam aur code (kam az kam 6 harf) zaroori hain.',true);
+        const x=V('mcX');const exp=x?new Date(x+'T23:59:59').getTime():0;
+        try{await save(code,{...c,name,fee:N(V('mcF')),expiryMs:exp,active:V('mcA')==='1',notes:V('mcO'),createdAtMs:c.createdAtMs||Date.now()});closeModal();toast('Client save ho gaya.');load()}catch(e){toast(e.message,true)}}}])};
+  if($('#mcNew'))$('#mcNew').onclick=()=>form();
+  if(CloudBackup.ownerTok)load();
+  if($('#mcLogin'))$('#mcLogin').onclick=async()=>{try{msg('Login ho raha hai…');await CloudBackup.ownerLogin(V('mcE'),V('mcP'));MC.err='';render()}catch(e){msg(e.message,'err')}};
 };
 
 /* ---------- CLOUD BACKUP (har Day End par poora data Firestore mein, owner ke liye) ----------
@@ -2478,23 +2595,23 @@ const CloudBackup={
     return out},
   async upload(b){
     const n=Math.max(1,Math.ceil(b.data.length/this.PART));
-    for(let i=0;i<n;i++)await withTimeout(this.TIMEOUT,s=>FS.req('/backups/'+encodeURIComponent(b.id)+'/parts/'+String(i).padStart(4,'0'),{method:'PATCH',body:FS.doc({n:i,data:b.data.slice(i*this.PART,(i+1)*this.PART)})},s));
+    for(let i=0;i<n;i++)await withTimeout(this.TIMEOUT,s=>FS.req(FS.root()+'/backups/'+encodeURIComponent(b.id)+'/parts/'+String(i).padStart(4,'0'),{method:'PATCH',body:FS.doc({n:i,data:b.data.slice(i*this.PART,(i+1)*this.PART)})},s));
     /* main document sabse aakhir mein: yeh ho to backup mukammal hai */
-    await withTimeout(this.TIMEOUT,s=>FS.req('/backups/'+encodeURIComponent(b.id),{method:'PATCH',body:FS.doc({id:b.id,company:b.company,date:b.date,enc:b.enc,parts:n,size:b.size,by:b.by,device:b.device,host:b.host,createdAtMs:b.createdAtMs})},s))},
+    await withTimeout(this.TIMEOUT,s=>FS.req(FS.root()+'/backups/'+encodeURIComponent(b.id),{method:'PATCH',body:FS.doc({id:b.id,company:b.company,date:b.date,enc:b.enc,parts:n,size:b.size,by:b.by,device:b.device,host:b.host,client:FS.code,createdAtMs:b.createdAtMs})},s))},
   /* ---- owner side ---- */
   ownerTok:null,
   async ownerLogin(email,pass){
-    if(!FS.ok)throw new Error('Pehle Order sync settings mein Firebase config save karein.');
+    if(!FS.hasCfg)throw new Error('Firebase config nahi mila.');
     const r=await FS.call('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key='+encodeURIComponent(FS.cfg.apiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,returnSecureToken:true})}).catch(e=>{throw new Error(e.message==='INVALID_LOGIN_CREDENTIALS'||/PASSWORD|EMAIL|CREDENTIAL/.test(e.message)?'Email ya password galat hai.':e.message)});
     this.ownerTok=r.idToken},
   async ownerReq(path,opt){
     const h={'Content-Type':'application/json',Authorization:'Bearer '+this.ownerTok};
     return await FS.call(FS.base()+path,{...opt,headers:h})},
   async list(){
-    const r=await this.ownerReq(':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'backups'}],orderBy:[{field:{fieldPath:'createdAtMs'},direction:'DESCENDING'}],limit:200}})});
-    return(r||[]).filter(x=>x.document).map(x=>FS.un(x.document))},
+    const r=await this.ownerReq(':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'backups',allDescendants:true}],limit:300}})});
+    return(r||[]).filter(x=>x.document).map(x=>({...FS.un(x.document),path:x.document.name.split('/documents')[1]})).sort((a,c)=>N(c.createdAtMs)-N(a.createdAtMs))},
   async fetch(b){
-    const r=await this.ownerReq('/backups/'+encodeURIComponent(b.id)+'/parts?pageSize=300');
+    const r=await this.ownerReq(b.path+'/parts?pageSize=300');
     const parts=(r.documents||[]).map(d=>FS.un(d)).sort((a,c)=>a.n-c.n);
     if(parts.length!==N(b.parts))throw new Error('Backup ke hisse poore nahi mile.');
     return await this.gunzip(b.enc,parts.map(p=>p.data).join(''))}
@@ -2507,7 +2624,7 @@ VIEWS.cloudBackups=el=>{
     <p class="msg small" id="cbMsg">${esc(CB.err)}</p><div class="mt" id="cbOut"></div></div>`;
   const msg=(t,k)=>{const m=$('#cbMsg');if(m){m.textContent=t;m.className='msg small '+(k||'')}};
   const draw=()=>{const o=$('#cbOut');if(!o||!CB.rows)return;
-    o.innerHTML=table([{t:'Company'},{t:'Day End date'},{t:'Kisne'},{t:'Laptop'},{t:'Kab aaya'},{t:'Size',n:1},{t:''}],CB.rows.map((b,i)=>[esc(b.company),fmtDate(b.date),esc(b.by),esc(b.host||String(b.device||'').slice(0,8)),new Date(N(b.createdAtMs)).toLocaleString(),fmt(N(b.size)/1024)+' KB',`<button class="btn sm" data-dl="${i}">⬇ Download</button>`]));
+    o.innerHTML=table([{t:'Client'},{t:'Company'},{t:'Day End date'},{t:'Kisne'},{t:'Laptop'},{t:'Kab aaya'},{t:'Size',n:1},{t:''}],CB.rows.map((b,i)=>[esc((b.path.split('/')[2]||'')),esc(b.company),fmtDate(b.date),esc(b.by),esc(b.host||String(b.device||'').slice(0,8)),new Date(N(b.createdAtMs)).toLocaleString(),fmt(N(b.size)/1024)+' KB',`<button class="btn sm" data-dl="${i}">⬇ Download</button>`]));
     $$('#cbOut [data-dl]').forEach(x=>x.onclick=async()=>{const b=CB.rows[+x.dataset.dl];x.disabled=true;try{const txt=await CloudBackup.fetch(b);const bl=new Blob([txt],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=b.company.replace(/[^\w-]+/g,'_')+'_dayend_'+b.date+'_'+b.id.split('_').pop()+'.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){toast(e.message,true)}x.disabled=false})};
   const load=async()=>{msg('Backups la raha hai…');try{CB.rows=await CloudBackup.list();msg(CB.rows.length?'':'Abhi koi backup nahi aaya.');CB.err='';draw()}catch(e){CloudBackup.ownerTok=null;CB.err=e.message+(e.http===403?' — Rules update karke Publish karein aur owner account se login karein.':'');render()}};
   if(CloudBackup.ownerTok)load();
