@@ -6,7 +6,7 @@ service cloud.firestore {
     // Neeche email ko apne asli master email se badal kar Publish karein.
     function master() {
       return request.auth != null && request.auth.token.firebase.sign_in_provider == 'password'
-        && request.auth.token.email == 'MASTER_EMAIL_YAHAN@example.com';
+        && request.auth.token.email == 'fatimatech96@gmail.com';
     }
     function closed(c, b, d) { return exists(/databases/$(database)/documents/clients/$(c)/dayEnds/$(b + '_' + d)); }
     function okOrder(o, id) {

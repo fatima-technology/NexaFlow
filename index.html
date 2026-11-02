@@ -2393,7 +2393,7 @@ service cloud.firestore {
     // Neeche email ko apne asli master email se badal kar Publish karein.
     function master() {
       return request.auth != null && request.auth.token.firebase.sign_in_provider == 'password'
-        && request.auth.token.email == 'MASTER_EMAIL_YAHAN@example.com';
+        && request.auth.token.email == 'fatimatech96@gmail.com';
     }
     function closed(c, b, d) { return exists(/databases/$(database)/documents/clients/$(c)/dayEnds/$(b + '_' + d)); }
     function okOrder(o, id) {
@@ -2467,7 +2467,7 @@ VIEWS.fsSettings=el=>{
    <div class="card"><h3>Firebase par ek baar ka setup</h3>
     <ol class="small"><li>Firebase console mein <b>Build → Firestore Database → Create database</b>.</li>
     <li><b>Build → Authentication → Sign-in method</b> mein <b>Anonymous</b> (app ke liye) aur <b>Email/Password</b> (master ke liye) enable karein. Master ka user banayein.</li>
-    <li>Neeche wale rules mein <code>MASTER_EMAIL_YAHAN@example.com</code> ko apne master email se badlein, phir Firestore <b>Rules</b> tab mein paste karke <b>Publish</b> karein (repo mein <code>firestore.rules</code> bhi hai).</li></ol>
+    <li>Neeche wale rules mein <code>fatimatech96@gmail.com</code> ko apne master email se badlein, phir Firestore <b>Rules</b> tab mein paste karke <b>Publish</b> karein (repo mein <code>firestore.rules</code> bhi hai).</li></ol>
     <div class="row"><button class="btn sm" id="fsCopy">📋 Rules copy karein</button></div><pre class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;margin-top:8px">${esc(FS_RULES)}</pre></div>`;
   const msg=(t,k)=>{const m=$('#fsMsg');m.textContent=t;m.className='msg small '+(k||'')};
   const cmsg=(t,k)=>{const m=$('#fsCodeMsg');m.textContent=t;m.className='msg small '+(k||'')};
