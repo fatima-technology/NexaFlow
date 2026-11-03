@@ -1995,7 +1995,7 @@ function syncTitleBar(){
     cx.fillStyle='#ffffff';cx.fillStyle=getComputedStyle(el).backgroundColor;cx.fillRect(0,0,1,1);const [r,g,b]=cx.getImageData(0,0,1,1).data;
     const hex='#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');nexaDesktop.setTitleBar(hex,(r*299+g*587+b*114)/1000<140?'#ffffff':'#222222')}catch(e){}}
 function startApp(){
-  try{const vc=document.getElementById('verChip');if(vc&&window.nexaDesktop&&nexaDesktop.version){vc.textContent='NexaFlow v'+nexaDesktop.version;vc.hidden=false}}catch(e){}
+  try{const vc=document.getElementById('verChip');if(vc&&window.nexaDesktop&&nexaDesktop.version){vc.textContent='NexaFlow v'+nexaDesktop.version;vc.hidden=false;vc.style.cursor='pointer';vc.title='Click: nayi version abhi check karein';vc.onclick=async()=>{toast('Nayi version check ho rahi hai…');await Upd.checkLatest(true);const t=Upd.available();toast(t?'Nayi version v'+t+' available hai — upar ⬆ icon dabayein.':'Aap latest version (v'+nexaDesktop.version+') par hain.',false)}}}catch(e){}
   const rb=document.getElementById('reloadBtn');if(rb&&window.nexaDesktop){rb.hidden=false;rb.onclick=()=>{try{nexaDesktop.reload?nexaDesktop.reload():location.reload()}catch(e){location.reload()}}}
   setTimeout(syncTitleBar,300);Upd.refresh();
   $('#login').style.display='none';$('#app').classList.add('on');applyBranding();
@@ -2765,25 +2765,26 @@ const Upd={busy:false,hooked:false,latest:'',_chk:0,_auto:false,_w:0,
   mode(){const st=License.st;return st&&st.updateMode==='manual'?'manual':'auto'},
   target(){const st=License.st||{};const c=this.mode()==='manual'?[st.updateTo]:[st.updateTo,st.updateAll,this.latest];return c.filter(v=>this.valid(v)).sort((a,b)=>this.cmp(b,a))[0]||''},
   /* GitHub par jo release publish hui (installer + latest.yml ke saath) un mein se sab se nayi */
-  async checkLatest(force){
+  async checkLatest(force,launch){
     if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return;
-    if(!force&&Date.now()-this._chk<25*60*1000)return;this._chk=Date.now();
+    if(!force&&Date.now()-this._chk<3*60*1000)return;this._chk=Date.now();
     /* khulte waqt: pehle is client ka taaza Update mode (master ne manual kiya ho to khud-install nahi hona chahiye) */
     try{await Orders.init();if(!License.st)await License.load();if(FS.ok&&performance.now()<120000)await License.check(true)}catch(e){}
     try{
       const r=await withTimeout(15000,s=>fetch('https://api.github.com/repos/fatima-technology/NexaFlow/releases?per_page=20',{signal:s,headers:{Accept:'application/vnd.github+json'}}));
-      if(!r.ok)return;const l=await r.json();
+      if(!r.ok){if(r.status===403||r.status===429)this._chk=Date.now()+27*60*1000;return}const l=await r.json();
       this.latest=(Array.isArray(l)?l:[]).filter(x=>x&&!x.draft&&!x.prerelease&&/^v\d+\.\d+\.\d+$/.test(String(x.tag_name))&&(x.assets||[]).some(a=>a.name==='latest.yml')).map(x=>x.tag_name.slice(1)).sort((a,b)=>this.cmp(b,a))[0]||'';
     }catch(e){}
     this.refresh();
     /* app abhi khuli hai (pehle 2 minute): nayi version ho to khud install shuru — kaam ke beech mein nahi */
-    const t=this.available();if(t&&!this.busy&&!this._auto&&performance.now()<120000&&this.mode()==='auto'){this._auto=true;this.run(t)}},
+    const t=this.available();if(t&&!this.busy&&!this._auto&&launch&&performance.now()<120000&&this.mode()==='auto'){this._auto=true;this.run(t)}},
   watch(){
     if(this._w||!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return;this._w=1;
-    this.checkLatest(true);setInterval(()=>this.checkLatest(),30*60*1000);
+    this.checkLatest(true,true);setInterval(()=>this.checkLatest(),10*60*1000);
     window.addEventListener('online',()=>setTimeout(()=>this.checkLatest(),2000));window.addEventListener('focus',()=>this.checkLatest())},
   available(){if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return'';const t=this.target();return t&&this.cmp(t,nexaDesktop.version)>0?t:''},
   refresh(){const b=document.getElementById('updBtn');if(!b)return;
+    if(window.NexaApk){const pend=NexaApk.pending;b.hidden=!pend||!ME;if(pend){b.textContent='⬆';b.title='Naya update tayyar hai — dabayein';b.onclick=()=>NexaApk.apply()}return}
     if(!this.hooked&&window.nexaDesktop&&nexaDesktop.onUpdate){this.hooked=true;nexaDesktop.onUpdate(m=>this.on(m))}
     const t=this.available();b.hidden=!t||!ME;if(t){b.textContent='⬆';b.title='Nayi version v'+t+' available — Update karne ke liye click karein';b.onclick=()=>confirmBox('Nayi version v'+t+' download hogi, phir app khud band ho kar dobara khulegi. Aap ka data safe rahega. Update karein?',()=>this.run(t))}},
   run(t){if(this.busy)return;this.busy=true;modal('App update',`<p id="updMsg">Update shuru ho raha hai (v${esc(t)})…</p><div style="height:10px;background:#8883;border-radius:6px;overflow:hidden"><div id="updBar" style="height:100%;width:3%;background:#1e7a56;transition:width .3s"></div></div><p class="small muted">Is dauran app band na karein.</p>`);
@@ -3879,10 +3880,13 @@ window.nfUpdateMode=async()=>{try{await Orders.init();if(!License.st)await Licen
 /* naya code phone mein aa gaya: login screen par foran restart, kaam ke beech mein banner */
 window.addEventListener('nexaflow-update-ready',()=>{
   if(!window.NexaApk)return;if(!ME){NexaApk.apply();return}
+  try{Upd.refresh()}catch(e){}
   if(document.getElementById('apkUpd'))return;
   const b=document.createElement('div');b.id='apkUpd';b.style.cssText='position:fixed;left:12px;right:12px;bottom:14px;z-index:9998;background:#0D3A50;color:#fff;border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.3)';
   b.innerHTML='<span style="flex:1">🆕 Naya update tayyar hai</span><button class="btn pri" id="apkUpdGo">Abhi lagayein</button>';
   document.body.appendChild(b);document.getElementById('apkUpdGo').onclick=()=>NexaApk.apply()});
+/* app dobara samne aaye to naya code foran dhoondo (har 2 minute se zyada nahi) */
+if(window.NexaApk){let _apkT=0;document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-_apkT>120000){_apkT=Date.now();if(NexaApk.check)NexaApk.check()}})}
 /* app theek se start ho gayi: loader ko batao (warna naya code 15 sec baad hata diya jata hai) */
 if(window.NexaApk&&NexaApk.ready)NexaApk.ready();
 </script>
