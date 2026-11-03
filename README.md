@@ -41,3 +41,8 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Expiry / fees:** "+1 mahina" / "+1 saal" dabane se expiry aage barhti hai aur payment record hoti hai. "Band" karne par client foran block ho jata hai. Expire hone par client (admin/booker/...) ko "NexaFlow band hai" screen dikhti hai; **data delete nahi hota**. Developer login kabhi block nahi hota. Device license online hone par check karke yaad rakhta hai, isliye offline mein bhi expiry ki tareekh par band hota hai.
 - **Cloud backups** screen master login se sab clients ke backups dikhati hai (Client column ke saath).
 - Nota: client ka login Firebase Auth se juda nahi (anonymous auth), is liye client ka code hi uski hifazat hai; code kisi ko na batayein.
+
+## Windows .exe ab GitHub Pages se khulta hai
+- `.exe` ab `https://fatima-technology.github.io/NexaFlow/` load karta hai (Cloudflare worker hata diya gaya hai). PR merge hote hi GitHub Pages par nayi version aati hai aur `.exe` khud update ho jata hai.
+- Purani `.exe` jo workers.dev se banti thi ab nahi khulegi: **Build Windows exe** dobara chala kar nayi `.exe` install karein.
+- Dhyan: browser/app ka data (local storage) har website address ke hisaab se alag hota hai, isliye nayi `.exe` pehli baar khali khulegi. Purana data wapas laane ke liye backup file ya Cloud restore (pehli screen par) use karein.

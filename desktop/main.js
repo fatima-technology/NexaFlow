@@ -6,7 +6,7 @@ const fs = require('fs');
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
 // App hamesha live site se khulti hai: PR merge hote hi nayi version khud aa jati hai (offline cache sw.js se).
-const APP_URL = 'https://nexaflow.fatima-tech.workers.dev/';
+const APP_URL = 'https://fatima-technology.github.io/NexaFlow/';
 
 let win;
 function createWindow() {
