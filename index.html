@@ -532,6 +532,10 @@ body.s-neon #welcome path{stroke:color-mix(in srgb,var(--accent) 60%,transparent
 .mode-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--btn-bg);cursor:pointer;display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 auto;transition:transform .25s var(--ease,ease)}
 .mode-btn:hover{transform:rotate(-20deg)}
 .login-mode{position:absolute;top:16px;right:16px;z-index:3}
+/* hidden attribute ko .mode-btn ka display override na kare (warna Update / Refresh button hamesha dikhte) */
+#updBtn[hidden],#reloadBtn[hidden]{display:none!important}
+#updBtn{width:30px;height:30px;min-height:0;padding:0;border-radius:50%;border:0;background:#1e7a56;color:#fff;font-size:16px;font-weight:700;line-height:1;cursor:pointer;animation:updPulse 1.8s infinite}
+@keyframes updPulse{0%,100%{box-shadow:0 0 0 0 rgba(30,122,86,.55)}50%{box-shadow:0 0 0 7px rgba(30,122,86,0)}}
 /* Desktop (.exe): header hi title bar hai; Windows ke minimize/maximize/close buttons ke liye jagah */
 html.desk .top{-webkit-app-region:drag;padding-right:150px}
 html.desk .top button,html.desk .top .chip,html.desk .top input,html.desk .user-menu{-webkit-app-region:no-drag}
@@ -1002,7 +1006,7 @@ body.has-netbar .top{top:26px}
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <h2 id="pageTitle">Dashboard</h2>
       <span class="chip" id="bizDate">—</span>
-      <button class="mode-btn" id="updBtn" type="button" hidden style="width:auto;padding:0 12px;font-weight:700;color:#fff;background:#1e7a56;border-color:#1e7a56" title="Nayi version available">⬆️ Update</button>
+      <button class="mode-btn" id="updBtn" type="button" hidden title="Nayi version available">⬆</button>
       <button class="mode-btn" id="reloadBtn" type="button" hidden title="Refresh (F5)" aria-label="Refresh">🔄</button>
       <button class="mode-btn" data-mode-btn type="button">🌙</button>
       <button class="user-btn" id="userBtn"><span class="avatar" id="avatar">A</span><span class="un"><b id="uName">User</b> <small class="muted" id="uRole"></small></span></button>
@@ -2595,7 +2599,7 @@ const Upd={busy:false,hooked:false,
   available(){if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return'';const t=this.target();return t&&this.cmp(t,nexaDesktop.version)>0?t:''},
   refresh(){const b=document.getElementById('updBtn');if(!b)return;
     if(!this.hooked&&window.nexaDesktop&&nexaDesktop.onUpdate){this.hooked=true;nexaDesktop.onUpdate(m=>this.on(m))}
-    const t=this.available();b.hidden=!t||!ME;if(t){b.textContent='⬆️ Update v'+t;b.onclick=()=>confirmBox('Nayi version v'+t+' download hogi, phir app khud band ho kar dobara khulegi. Aap ka data safe rahega. Update karein?',()=>this.run(t))}},
+    const t=this.available();b.hidden=!t||!ME;if(t){b.textContent='⬆';b.title='Nayi version v'+t+' available — Update karne ke liye click karein';b.onclick=()=>confirmBox('Nayi version v'+t+' download hogi, phir app khud band ho kar dobara khulegi. Aap ka data safe rahega. Update karein?',()=>this.run(t))}},
   run(t){if(this.busy)return;this.busy=true;modal('App update',`<p id="updMsg">Update shuru ho raha hai (v${esc(t)})…</p><div style="height:10px;background:#8883;border-radius:6px;overflow:hidden"><div id="updBar" style="height:100%;width:3%;background:#1e7a56;transition:width .3s"></div></div><p class="small muted">Is dauran app band na karein.</p>`);
     try{nexaDesktop.update(t)}catch(e){this.on({type:'error',message:e.message})}},
   on(m){const msg=document.getElementById('updMsg'),bar=document.getElementById('updBar');
