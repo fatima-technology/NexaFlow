@@ -2,6 +2,11 @@ name: Build Android APK (NexaFlow Field)
 
 # Separate mobile app for Order Bookers and Store Managers (folder: mobile/).
 # The Windows/laptop app is NOT touched by this workflow.
+#
+# The APK is signed with ONE fixed key kept in GitHub Secrets, so every new APK can be installed
+# over the old one on a phone without losing its local data. Add these repository secrets once
+# (Settings -> Secrets and variables -> Actions):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 on:
   workflow_dispatch:
   push:
@@ -16,8 +21,20 @@ jobs:
     defaults:
       run:
         working-directory: mobile
+    env:
+      KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check signing secrets
+        run: |
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASS" ]; then
+            echo "::error::Signing secrets are missing. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD under Settings -> Secrets and variables -> Actions. A build signed with a different key cannot be installed over an older one."
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/nexaflow-field.keystore"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -32,13 +49,21 @@ jobs:
       - name: Launcher icon
         continue-on-error: true
         run: ./scripts/brand-android.sh
+      - name: Version (rises with every build so updates install over old ones)
+        run: |
+          sed -i "s/versionCode 1\$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
       - name: Copy web app into Android project
         run: npx cap sync android
-      - name: Build APK
+      - name: Build release APK
         working-directory: mobile/android
-        run: ./gradlew assembleDebug --no-daemon
-      - name: Rename APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk NexaFlow-Field.apk
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Align and sign APK
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/nexaflow-field.keystore" --ks-pass env:KS_PASS --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS --out NexaFlow-Field.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs NexaFlow-Field.apk
       - uses: actions/upload-artifact@v4
         with:
           name: NexaFlow-Field-APK
