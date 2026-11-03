@@ -63,6 +63,16 @@ function setupBackupFolder() {
 // ---- Update: master jis version ka kahe wohi GitHub Release se download karke install ----
 let updating = false;
 function sendUpd(msg) { if (win && !win.isDestroyed()) win.webContents.send('nexa-update-status', msg); }
+// Sab se nayi release ka version. GitHub API ki jagah wohi latest.yml jo electron-updater padhta hai: is par API ki
+// rate limit (60/ghanta per IP, shared internet par jaldi khatam) nahi lagti aur CORS ka masla bhi nahi (main process).
+ipcMain.handle('nexa-latest', async () => {
+  try {
+    const r = await net.fetch('https://github.com/' + RELEASE_REPO + '/releases/latest/download/latest.yml', { headers: { 'Cache-Control': 'no-cache' } });
+    if (!r.ok) return '';
+    const m = (await r.text()).match(/^version:\s*['"]?(\d+\.\d+\.\d+)['"]?\s*$/m);
+    return m ? m[1] : '';
+  } catch (e) { return ''; }
+});
 ipcMain.on('nexa-update', (e, version) => {
   if (updating) return;
   if (!/^\d+\.\d+\.\d+$/.test(String(version))) return sendUpd({ type: 'error', message: 'Version galat hai.' });

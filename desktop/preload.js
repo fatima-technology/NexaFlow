@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('nexaDesktop', {
   firebaseConfig: readConfig(),
   version: (() => { try { return require('./package.json').version; } catch (e) { return ''; } })(),
   update: (version) => ipcRenderer.send('nexa-update', String(version)),
+  latest: () => ipcRenderer.invoke('nexa-latest'),
   onUpdate: (cb) => ipcRenderer.on('nexa-update-status', (e, msg) => cb(msg)),
   reload: () => ipcRenderer.send('nexa-reload'),
   setTitleBar: (color, symbolColor) => ipcRenderer.send('nexa-titlebar', String(color), String(symbolColor)),
