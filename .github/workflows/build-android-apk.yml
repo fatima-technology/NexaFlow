@@ -1,23 +1,38 @@
 name: Build Android APK (NexaFlow Field)
 
-# Separate mobile app for Order Bookers and Store Managers (folder: mobile/).
-# The Windows/laptop app is NOT touched by this workflow.
+# The APK is only the "shell" of the mobile app. The app itself updates over the air from GitHub Pages
+# (see mobile/www/loader.js), so this workflow is needed ONLY the first time and when the shell changes
+# (loader.js, capacitor config, app icon). Run it manually: Actions -> Run workflow.
+#
+# Signing is optional. With the 4 secrets below the APK is signed with your fixed key (new APKs then
+# install over old ones). Without them a debug-signed APK is built (fine for a first install).
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 on:
   workflow_dispatch:
-  push:
-    tags: ['field-v*']
-    paths: ['mobile/**', '.github/workflows/build-android-apk.yml']
 
 jobs:
   apk:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     defaults:
       run:
         working-directory: mobile
+    env:
+      KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Signing mode
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/nexaflow-field.keystore"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+            echo "Signing with the fixed release key."
+          else
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::No signing secrets found: building a debug-signed APK. A later APK built with a different key cannot be installed over this one (the app itself still updates over the air)."
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -32,19 +47,31 @@ jobs:
       - name: Launcher icon
         continue-on-error: true
         run: ./scripts/brand-android.sh
+      - name: Version (rises with every build)
+        run: |
+          sed -i "s/versionCode 1\$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
       - name: Copy web app into Android project
         run: npx cap sync android
-      - name: Build APK
+      - name: Build release APK (signed)
+        if: env.SIGNED == 'true'
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Align and sign APK
+        if: env.SIGNED == 'true'
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/nexaflow-field.keystore" --ks-pass env:KS_PASS --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS --out NexaFlow-Field.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs NexaFlow-Field.apk
+      - name: Build debug APK (unsigned secrets)
+        if: env.SIGNED != 'true'
         working-directory: mobile/android
         run: ./gradlew assembleDebug --no-daemon
-      - name: Rename APK
+      - name: Rename debug APK
+        if: env.SIGNED != 'true'
         run: cp android/app/build/outputs/apk/debug/app-debug.apk NexaFlow-Field.apk
       - uses: actions/upload-artifact@v4
         with:
           name: NexaFlow-Field-APK
           path: mobile/NexaFlow-Field.apk
-      - name: Attach to release (tag builds)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: mobile/NexaFlow-Field.apk

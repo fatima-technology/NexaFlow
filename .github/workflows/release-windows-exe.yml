@@ -1,14 +1,26 @@
 name: Release Windows exe
 
-# Nayi version publish karne ke liye: Actions -> "Release Windows exe" -> Run workflow -> version likhein (jaise 1.1.0).
-# Yeh GitHub Release v1.1.0 banata hai (installer + latest.yml). App ke andar master panel se jis client ko chahein
-# (ya sab ko) is version ka "Update" bhej sakte hain.
+# AUTOMATIC: jab bhi laptop app ki files (index.html, icons, desktop/) main mein badalti hain, yeh nayi version khud
+# banata aur GitHub Release mein publish karta hai (v1.0.2 -> v1.0.3 ...). Laptop app khud nayi version dhoond kar
+# update karti hai. Manual chalana ho to Actions -> Run workflow (version khali chor dein, ya jaise 1.1.0 likhein).
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'manifest.json'
+      - 'icons/**'
+      - 'desktop/**'
+      - '.github/workflows/release-windows-exe.yml'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Nayi version (jaise 1.1.0, pehle wali se bari)'
-        required: true
+        description: 'Optional: version (jaise 1.1.0). Khali = pichli version ka agla number'
+        required: false
+
+concurrency:
+  group: release-exe
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -17,24 +29,37 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Version check
+      - name: Syntax check (kharab code release nahi hoga)
+        run: node desktop/scripts/check-syntax.js
+      - name: Decide version
         shell: bash
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then echo "Version aise likhein: 1.1.0"; exit 1; fi
+          if [ -n "$INPUT_VERSION" ]; then
+            V="$INPUT_VERSION"
+          else
+            LAST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
+            if [ -z "$LAST" ]; then V="1.0.1"; else
+              LAST=${LAST#v}; MAJ=${LAST%%.*}; REST=${LAST#*.}; MIN=${REST%%.*}; PAT=${REST#*.}
+              V="$MAJ.$MIN.$((PAT+1))"
+            fi
+          fi
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then echo "Bad version: $V"; exit 1; fi
+          echo "Releasing version $V"
+          echo "RELEASE_VERSION=$V" >> "$GITHUB_ENV"
       - name: Install
         working-directory: desktop
         run: npm install
       - name: Set version
         working-directory: desktop
         shell: bash
-        env:
-          VERSION: ${{ github.event.inputs.version }}
-        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
       - name: Build and publish release
         working-directory: desktop
         env:

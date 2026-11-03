@@ -46,7 +46,10 @@ async function boot(){
   if(M&&sid)ME=M.users.find(u=>u.id===sid)||null;
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
   window.addEventListener('online',()=>{ONLINE=true;chrome()});window.addEventListener('offline',()=>{ONLINE=false;chrome()});
+  /* over-the-air update (loader.js): restart at once on the login/setup screens, otherwise show a banner */
+  window.addEventListener('nexaflow-update-ready',()=>{if(window.NFOTA&&(!ME||!M||!FS.code))NFOTA.apply();else render()});
   render();
+  if(window.NFOTA&&NFOTA.ready)NFOTA.ready();
 }
 function chrome(){const n=$('#netChip');if(n){n.className='net'+(ONLINE?'':' off');n.lastChild.textContent=ONLINE?'Online':'Offline'}}
 
@@ -64,6 +67,7 @@ function render(){
   $$('[data-tab]').forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;render();$('#main').scrollTop=0});
   $('#btnSync').onclick=doSync;$('#btnMe').onclick=menuSheet;
   const v=(ME.role==='booker'?BOOKER:STORE)[TAB];v($('#main'));
+  if(window.NFOTA&&NFOTA.pending){$('#main').insertAdjacentHTML('afterbegin','<div class="note">🆕 Naya update tayyar hai. <button class="btn sm pri" id="otaGo" style="margin-left:6px">Abhi lagayein</button></div>');$('#otaGo').onclick=()=>NFOTA.apply()}
 }
 
 /* ---------- setup (first run) & login ---------- */
@@ -93,7 +97,7 @@ function loginView(app){
 }
 function menuSheet(){
   const age=Math.floor((Date.now()-M.fetchedAtMs)/3600000);
-  openSheet(`<h2>${esc(ME.name)}</h2><div class="card"><div class="small muted">Data: <b>${fmtDate(M.bk.date)}</b> ka Day End backup • download ${age<1?'abhi':age+' ghante pehle'}</div><div class="small muted">Client: ${esc(FS.code)}</div></div>
+  openSheet(`<h2>${esc(ME.name)}</h2><div class="card"><div class="small muted">Data: <b>${fmtDate(M.bk.date)}</b> ka Day End backup • download ${age<1?'abhi':age+' ghante pehle'}</div><div class="small muted">Client: ${esc(FS.code)}</div><div class="small muted">App: ${window.NFOTA&&NFOTA.ver?esc(NFOTA.ver)+(NFOTA.source==='update'?' (online update)':''):'—'}</div></div>
    <div class="btns" style="flex-direction:column"><button class="btn block" id="mnRef">⬇ Data refresh (latest backup)</button><button class="btn block" id="mnOut">Logout</button><button class="btn block bad" id="mnCode">Client code badlein</button></div>`,()=>{
     $('#mnOut').onclick=async()=>{await DB.delkv('session');ME=null;closeSheet();render()};
     $('#mnRef').onclick=async()=>{const b=$('#mnRef');b.disabled=true;try{await refreshMaster(t=>{b.textContent=t});ME=M.users.find(u=>u.id===ME.id)||null;closeSheet();toast('Data refresh ho gaya ✓');if(!ME)await DB.delkv('session');render()}catch(e){b.disabled=false;b.textContent='⬇ Data refresh (latest backup)';toast(e.net?'Internet nahi hai.':e.message,true)}};
