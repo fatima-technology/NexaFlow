@@ -1,4 +1,4 @@
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -21,4 +21,8 @@ contextBridge.exposeInMainWorld('nexaDesktop', {
   isDesktop: true,
   hostname: os.hostname(),
   firebaseConfig: readConfig(),
+  reload: () => ipcRenderer.send('nexa-reload'),
+  setTitleBar: (color, symbolColor) => ipcRenderer.send('nexa-titlebar', String(color), String(symbolColor)),
 });
+// Header hi title bar ban jata hai: page ko pata chale ke yeh desktop app hai
+window.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('desk'));

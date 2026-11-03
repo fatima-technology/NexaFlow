@@ -532,6 +532,11 @@ body.s-neon #welcome path{stroke:color-mix(in srgb,var(--accent) 60%,transparent
 .mode-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--btn-bg);cursor:pointer;display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 auto;transition:transform .25s var(--ease,ease)}
 .mode-btn:hover{transform:rotate(-20deg)}
 .login-mode{position:absolute;top:16px;right:16px;z-index:3}
+/* Desktop (.exe): header hi title bar hai; Windows ke minimize/maximize/close buttons ke liye jagah */
+html.desk .top{-webkit-app-region:drag;padding-right:150px}
+html.desk .top button,html.desk .top .chip,html.desk .top input,html.desk .user-menu{-webkit-app-region:no-drag}
+html.desk #login .login-mode,html.desk .login-mode{right:150px!important}
+html.desk .lamp-dots{right:150px}
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
 .theme-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:2px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:8px;cursor:pointer;transition:border-color .15s,transform .15s}
 .theme-card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
@@ -997,6 +1002,7 @@ body.has-netbar .top{top:26px}
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <h2 id="pageTitle">Dashboard</h2>
       <span class="chip" id="bizDate">—</span>
+      <button class="mode-btn" id="reloadBtn" type="button" hidden title="Refresh (F5)" aria-label="Refresh">🔄</button>
       <button class="mode-btn" data-mode-btn type="button">🌙</button>
       <button class="user-btn" id="userBtn"><span class="avatar" id="avatar">A</span><span class="un"><b id="uName">User</b> <small class="muted" id="uRole"></small></span></button>
       <div class="user-menu" id="userMenu">
@@ -1642,9 +1648,25 @@ function printDoc(type,body,o){
     bodies.forEach(b=>{const l=[labels[0]||'',labels[1]||labels[0]||''];html+=`<table class="pg"><thead><tr><td style="height:${top}mm"></td></tr></thead><tbody><tr><td class="pgc"><table class="two"><tbody><tr>${l.map(x=>`<td>${one(b,x)}</td>`).join('')}</tr></tbody></table></td></tr></tbody><tfoot><tr><td style="height:${bot}mm"></td></tr></tfoot></table>`})}
   else{const n=Math.max(1,N(P.copies)||1);if(lhBg&&paper!=='thermal')html+=`<img class="lhfix" src="${s.letterhead}">`;
     bodies.forEach(b=>{for(let c=0;c<n;c++)html+=`<table class="pg"><thead><tr><td style="height:${paper==='thermal'?2:top}mm"></td></tr></thead><tbody><tr><td class="pgc">${one(b,n>1?labels[c]||'':'')}</td></tr></tbody><tfoot><tr><td style="height:${paper==='thermal'?2:bot}mm"></td></tr></tfoot></table>`})}
-  const fr=document.createElement('iframe');fr.style.cssText='position:fixed;left:-20000px;top:0;width:1200px;height:900px;border:0;visibility:hidden';document.body.appendChild(fr);
+  const fr=document.createElement('iframe');
+  /* Desktop app (.exe): seedha print dialog ki jagah pehle print preview dikhao */
+  const pv=!!(window.nexaDesktop&&o.preview!==false);let ov=null;
+  if(pv){
+    const old=document.getElementById('printPrev');if(old)old.parentNode.removeChild(old);
+    ov=document.createElement('div');ov.id='printPrev';ov.style.cssText='position:fixed;inset:0;z-index:10000;background:#525659;display:flex;flex-direction:column';
+    ov.innerHTML='<div style="display:flex;gap:10px;align-items:center;padding:8px 16px;background:#2b2d31;color:#fff;-webkit-app-region:drag"><b style="flex:1">Print preview</b><button class="btn pri" id="ppGo" style="-webkit-app-region:no-drag">🖨️ Print</button><button class="btn" id="ppX" style="-webkit-app-region:no-drag;margin-right:150px;color:#111">✕ Close</button></div><div id="ppBody" style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:16px"></div>';
+    document.body.appendChild(ov);
+    fr.style.cssText='background:#fff;border:0;box-shadow:0 2px 14px #0009;flex:none;width:'+W+'mm;height:60vh';
+    ov.querySelector('#ppBody').appendChild(fr);
+    const esc2=e=>{if(e.key==='Escape')close()};
+    const close=()=>{if(ov.parentNode)ov.parentNode.removeChild(ov);document.removeEventListener('keydown',esc2)};
+    document.addEventListener('keydown',esc2);
+    ov.querySelector('#ppX').onclick=close;
+    ov.querySelector('#ppGo').onclick=()=>{try{fr.contentWindow.focus();fr.contentWindow.print()}catch(e){console.error(e)}};
+  }else{fr.style.cssText='position:fixed;left:-20000px;top:0;width:1200px;height:900px;border:0;visibility:hidden';document.body.appendChild(fr)}
   const d=fr.contentWindow.document;d.open();d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title||s.companyName)}</title><style>${css}</style></head><body>${html}</body></html>`);d.close();
   const go=()=>{
+    if(pv){setTimeout(()=>{try{fr.style.height=Math.max(400,d.documentElement.scrollHeight+20)+'px'}catch(e){}},80);return}
     setTimeout(()=>{try{fr.contentWindow.focus();fr.contentWindow.print()}catch(e){console.error(e)}setTimeout(()=>fr.remove(),60000)},60)};
   const imgs=Array.from(d.images);let left=imgs.length;if(!left)setTimeout(go,150);else imgs.forEach(im=>{const done=()=>{if(--left===0)setTimeout(go,100)};im.complete?done():(im.onload=im.onerror=done)});
   return fr;
@@ -1876,6 +1898,7 @@ function applyTheme(){
     const fam=[...new Set([th.head,th.body])].map(f=>'family='+f.replace(/ /g,'+')+':wght@'+(FONT_W[f]||'400;600;700')).join('&');
     const href='https://fonts.googleapis.com/css2?'+fam+'&display=swap';if(l.href!==href)l.href=href}
   const m=document.querySelector('meta[name=theme-color]');if(m)m.content=String(v.side).startsWith('#')?v.side:'#1a1d3a';
+  setTimeout(syncTitleBar,120);
   $$('[data-mode-btn]').forEach(x=>{x.textContent=mode==='night'?'☀️':'🌙';x.title=mode==='night'?'Switch to day mode':'Switch to night mode';x.setAttribute('aria-label',x.title)});
 }
 function persistThemeChoice(theme,mode){
@@ -1957,7 +1980,14 @@ function render(){
   if(anim){v.classList.remove('enter');void v.offsetWidth;v.classList.add('enter');clearTimeout(render._t);render._t=setTimeout(()=>v.classList.remove('enter'),900)}
   countUp(v.querySelectorAll('.kpi'),!anim);
 }
+function syncTitleBar(){
+  if(!(window.nexaDesktop&&nexaDesktop.setTitleBar))return;
+  try{const el=document.querySelector('.top')||document.body;const cv=document.createElement('canvas');cv.width=cv.height=1;const cx=cv.getContext('2d',{willReadFrequently:true});
+    cx.fillStyle='#ffffff';cx.fillStyle=getComputedStyle(el).backgroundColor;cx.fillRect(0,0,1,1);const [r,g,b]=cx.getImageData(0,0,1,1).data;
+    const hex='#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');nexaDesktop.setTitleBar(hex,(r*299+g*587+b*114)/1000<140?'#ffffff':'#222222')}catch(e){}}
 function startApp(){
+  const rb=document.getElementById('reloadBtn');if(rb&&window.nexaDesktop){rb.hidden=false;rb.onclick=()=>{try{nexaDesktop.reload?nexaDesktop.reload():location.reload()}catch(e){location.reload()}}}
+  setTimeout(syncTitleBar,300);
   $('#login').style.display='none';$('#app').classList.add('on');applyBranding();
   $('#avatar').textContent=(ME.name||ME.username)[0].toUpperCase();$('#uName').textContent=ME.name||ME.username;$('#uRole').textContent=ME.role==='developer'?'Developer':ROLES[ME.role]||ME.role;
   $('#uMenuInfo').textContent=(ME.name||ME.username)+' • '+$('#uRole').textContent;
@@ -3189,7 +3219,7 @@ VIEWS.salary=el=>{
 const REPORTS={
   daily:{t:'Daily summary',f:()=>F('Date',inp('rD',today(),'date')),type:'dailySummary',b:()=>{const d=V('rD');const p=pnl(d,d);const rec=sum(approvedRec().filter(r=>(r.approvedDate||r.date)===d),r=>r.amount);const col=sum(DB.collections.filter(c=>c.date===d),c=>c.amount);
     const cashIn=sum(accountMoves().filter(m=>m.date===d),m=>m.in),cashOut=sum(accountMoves().filter(m=>m.date===d),m=>m.out);
-    const cards=[['Invoices',p.count],['Gross sales',money(p.gross)],['Discount',money(p.disc)],['Net sales',money(p.sales)],['Cash sales',money(sum(activeInv().filter(i=>i.date===d),invCash))],['Credit given',money(sum(activeInv().filter(i=>i.date===d),invDue))],['Supply man collection',money(col)],['Market recovery',money(rec)],['Returns',money(p.retVal)],['Expenses',money(p.exp)],['Gross profit',money(p.gp)],['Total cash in',money(cashIn)],['Total cash out',money(cashOut)],['Cash + bank balance',money(sum(DB.accounts,a=>accountBalance(a.id,d)))],['Market credit (total)',money(sum(DB.shops,s=>Math.max(0,shopDue(s.id))))]];
+    const cards=[['Invoices',p.count],['Gross sales',money(p.gross)],['Discount',money(p.disc)],['Net sales',money(p.sales)],['Investment (cost of goods sold)',money(p.cogs)],['Cash sales',money(sum(activeInv().filter(i=>i.date===d),invCash))],['Credit given',money(sum(activeInv().filter(i=>i.date===d),invDue))],['Supply man collection',money(col)],['Market recovery',money(rec)],['Returns',money(p.retVal)],['Expenses',money(p.exp)],['Gross profit',money(p.gp)],['Gross margin',(p.netSales>0?(p.gp/p.netSales*100).toFixed(1):'0.0')+'%'],['Net profit (after expenses)',money(p.net)],['Purchases (stock bought)',money(sum(DB.purchases.filter(x=>x.date===d),x=>N(x.total)))],['Total cash in',money(cashIn)],['Total cash out',money(cashOut)],['Cash + bank balance',money(sum(DB.accounts,a=>accountBalance(a.id,d)))],['Market credit (total)',money(sum(DB.shops,s=>Math.max(0,shopDue(s.id))))]];
     const bk=usersByRole('booker').map(b=>{const iv=activeInv().filter(i=>i.bookerId===b.id&&i.date===d);return[b.name||b.username,iv.length,sum(iv,i=>i.net),sum(iv,invDue),sum(approvedRec().filter(r=>r.collectorId===b.id&&(r.approvedDate||r.date)===d),r=>r.amount)]});
     return{cards,cols:[{t:'Booker'},{t:'Invoices',n:1},{t:'Sales',n:1},{t:'Credit',n:1},{t:'Recovery',n:1}],rows:bk,sub:fmtDate(d)}}},
   credit:{t:'Market credit (shop wise)',f:()=>F('Route',sel('rR',[...new Set(DB.shops.map(s=>s.route).filter(Boolean))],'','All'))+F('Booker',sel('rB',usersByRole('booker').map(u=>({v:u.id,t:u.name||u.username})),'','All'))+F('Only shops with credit',sel('rO',[{v:'1',t:'Yes'},{v:'',t:'All shops'}],'1')),b:()=>{
