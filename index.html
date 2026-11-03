@@ -1213,11 +1213,8 @@ function nextNo(key,prefix){DB.counters[key]=(DB.counters[key]||0)+1;return pref
 let ME=null;
 const isDev=()=>ME&&ME.role==='developer';
 const isAdmin=()=>ME&&(ME.role==='admin'||ME.role==='developer');
-/* Android APK (NexaFlow Field full app): phone par sirf booking, reports, invoices (PDF) aur booker ka Sync & Day End. Baqi sab laptop se */
-const APK_MODULES=['dashboard','pos','invoices','orderSync','reports','bookerReports','help'];
 function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
-  if(window.NexaApk&&!APK_MODULES.includes(mid))return false;
   if(m.devOnly)return isDev();
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
