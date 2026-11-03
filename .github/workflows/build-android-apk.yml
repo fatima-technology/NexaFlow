@@ -1,0 +1,50 @@
+name: Build Android APK (NexaFlow Field)
+
+# Separate mobile app for Order Bookers and Store Managers (folder: mobile/).
+# The Windows/laptop app is NOT touched by this workflow.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['field-v*']
+    paths: ['mobile/**', '.github/workflows/build-android-apk.yml']
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install Capacitor
+        run: npm install --no-audit --no-fund
+      - name: Add Android project
+        run: npx cap add android
+      - name: Launcher icon
+        continue-on-error: true
+        run: ./scripts/brand-android.sh
+      - name: Copy web app into Android project
+        run: npx cap sync android
+      - name: Build APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk NexaFlow-Field.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NexaFlow-Field-APK
+          path: mobile/NexaFlow-Field.apk
+      - name: Attach to release (tag builds)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mobile/NexaFlow-Field.apk

@@ -49,6 +49,15 @@ service cloud.firestore {
         }
       }
 
+      // NexaFlow Field (mobile APK): recovery, purchase, return, claim aur stock-count entries.
+      // Create-only: ek baar likhi entry kabhi badli ya mitai nahi ja sakti (id = UUID, dobara bhejne se duplicate nahi banta)
+      match /inbox/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.id == id
+                      && request.resource.data.kind is string && request.resource.data.byId is string;
+        allow update, delete: if false;
+      }
+
       // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
       match /dayEnds/{id} {
         allow read: if signedIn();
