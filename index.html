@@ -1093,6 +1093,7 @@ const MODULES=[
   {id:'pos',label:'Order booking / POS',icon:'🛒',group:'Sales'},
   {id:'orderSync',label:'Sync & Day End',icon:'🔄',group:'Sales'},
   {id:'liveOrders',label:'Booker orders (live)',icon:'📡',group:'Sales'},
+  {id:'mobileInbox',label:'Mobile inbox (APK)',icon:'📱',group:'Sales'},
   {id:'invoices',label:'Sales invoices',icon:'📄',group:'Sales'},
   {id:'delivery',label:'Delivery dates',icon:'📅',group:'Sales'},
   {id:'picklist',label:'Picklist / load sheet',icon:'🚚',group:'Sales'},
@@ -1156,7 +1157,7 @@ function freshDB(){return{
     {id:'u_dev',username:'developer',name:'Fatima-Tech Developer',role:'developer',pass:'',active:true},
     {id:'u_admin',username:'admin',name:'Admin',role:'admin',pass:'',active:true,perms:ROLE_DEFAULTS.admin.slice()}
   ],
-  products:[],shops:[],invoices:[],purchases:[],supplierPayments:[],recoveries:[],collections:[],returns:[],claims:[],
+  products:[],shops:[],invoices:[],purchases:[],supplierPayments:[],recoveries:[],collections:[],returns:[],claims:[],stockAdj:[],mobileDone:{},
   expenses:[],accounts:[{id:'acc_cash',name:'Cash in hand',type:'cash',opening:0,openingDate:today()}],transfers:[],
   staffAdv:[],salarySetup:{},attendance:{},attendanceLogs:[],salaries:[],investors:[],investorTxns:[],activity:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0},
   licence:{limit:200,unlimited:false,devName:'Fatima-Tech',phone:'',whatsapp:'',email:'',message:'Your free limit of invoices is complete. Please purchase the full version to continue.'}
@@ -1218,7 +1219,7 @@ function canSee(mid){
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
   if(mid==='storeReports')return ME.role==='storemanager'||isDev();
-  if(mid==='liveOrders')return isAdmin();
+  if(mid==='liveOrders'||mid==='mobileInbox')return isAdmin();
   if(mid==='attendanceLog'&&isAdmin())return true;
   if(isDev())return true;
   if(!S().modules[mid]&&mid!=='help')return false;
@@ -1491,7 +1492,7 @@ function productPcs(p){return N(p.packing)||1}
 function splitPcs(p,pcs){const pk=productPcs(p);const neg=pcs<0;pcs=Math.abs(Math.round(pcs));const c=Math.floor(pcs/pk),l=pcs%pk;return (neg?'-':'')+c+' ctn'+(l?' + '+l+' pcs':'')}
 function stockMap(){if(CACHE.stock)return CACHE.stock;const m={};const add=(id,v)=>{m[id]=(m[id]||0)+N(v)};
   DB.products.forEach(p=>add(p.id,p.openingPcs));DB.purchases.forEach(pu=>pu.items.forEach(it=>add(it.productId,it.pcs)));
-  activeInv().forEach(iv=>iv.items.forEach(it=>add(it.productId,-N(it.pcs))));DB.returns.forEach(r=>{if(r.toStock)add(r.productId,r.pcs)});DB.claims.forEach(c=>{if(c.deductStock)add(c.productId,-N(c.pcs))});
+  activeInv().forEach(iv=>iv.items.forEach(it=>add(it.productId,-N(it.pcs))));DB.returns.forEach(r=>{if(r.toStock)add(r.productId,r.pcs)});DB.claims.forEach(c=>{if(c.deductStock)add(c.productId,-N(c.pcs))});(DB.stockAdj||[]).forEach(a=>add(a.productId,a.pcs));
   return CACHE.stock=m}
 function stockOf(pid,excludeInv){
   const p=byId('products',pid);if(!p)return 0;
@@ -1509,6 +1510,7 @@ function stockAsOf(pid,asOf){
   activeInv().forEach(iv=>{if(onOrBefore(iv.date))iv.items.forEach(it=>{if(it.productId===pid)qty-=N(it.pcs)})});
   DB.returns.forEach(r=>{if(r.toStock&&r.productId===pid&&onOrBefore(r.date))qty+=N(r.pcs)});
   DB.claims.forEach(c=>{if(c.deductStock&&c.productId===pid&&onOrBefore(c.date))qty-=N(c.pcs)});
+  (DB.stockAdj||[]).forEach(a=>{if(a.productId===pid&&onOrBefore(a.date))qty+=N(a.pcs)});
   return qty;
 }
 function costPerPc(pid){
@@ -2452,6 +2454,123 @@ VIEWS.liveOrders=el=>{
   drawLive();Live.start();
 };
 
+/* =====================================================================
+   MOBILE INBOX — NexaFlow Field (Android APK) ki entries laptop ke records mein import karna
+   Orders (src='mobile') + inbox (recovery / purchase / return / claim / stock count) Firestore se aate hain.
+   Import hone ke baad entry DB.mobileDone mein likhi jati hai, is liye dobara import nahi hoti.
+   ===================================================================== */
+const MI={rows:null,err:'',busy:false,kind:'',show:'new',at:0};
+const MI_KIND={order:'Order',recovery:'Recovery',purchase:'Purchase',return:'Return',claim:'Claim',count:'Stock count'};
+async function miFetch(){
+  const run=body=>withTimeout(30000,s=>FS.req(FS.root()+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:body})},s));
+  const [a,b]=await Promise.all([
+    run({from:[{collectionId:'inbox'}],orderBy:[{field:{fieldPath:'createdAtMs'},direction:'DESCENDING'}],limit:1000}),
+    run({from:[{collectionId:'orders'}],where:{fieldFilter:{field:{fieldPath:'src'},op:'EQUAL',value:{stringValue:'mobile'}}},limit:1000})]);
+  const rows=[];
+  (a||[]).filter(x=>x.document).forEach(x=>{const o=FS.un(x.document);let p=null;try{p=JSON.parse(o.payload)}catch(e){}
+    if(p&&o.id&&MI_KIND[o.kind])rows.push({id:o.id,kind:o.kind,by:o.byName||'',date:o.date||'',at:N(o.createdAtMs),summary:o.summary||'',amount:N(o.amount),p})});
+  (b||[]).filter(x=>x.document).forEach(x=>{const o=FS.un(x.document);let p=null;try{p=JSON.parse(o.payload)}catch(e){}
+    if(p&&p.items&&o.uuid)rows.push({id:o.uuid,kind:'order',by:o.bookerName||'',date:o.date||'',at:N(o.createdAtMs),summary:(o.no||'')+' '+(o.shopName||''),amount:N(o.net),p})});
+  return rows.sort((x,y)=>x.at-y.at);
+}
+const miDone=r=>DB.mobileDone&&DB.mobileDone[r.id]||(r.kind==='order'&&DB.invoices.some(i=>i.id===r.id)?{at:'',ref:'Invoice maujood hai'}:null);
+/* kya yeh entry abhi import ho sakti hai? {err} = nahi, {warn} = ho sakti hai magar dhyan dein */
+function miCheck(r){
+  const p=r.p,miss=[];const needP=id=>{if(!byId('products',id))miss.push('product')};
+  if(r.kind==='order'){
+    if(!byId('shops',p.shopId))miss.push('shop');(p.items||[]).forEach(it=>needP(it.productId));
+    if(!miss.length&&!S().allowNegativeStock){const need={};p.items.forEach(it=>need[it.productId]=(need[it.productId]||0)+N(it.pcs));
+      for(const id in need)if(stockOf(id)<need[id]){const pr=byId('products',id);return{err:'Stock kam: '+pr.name+' ('+splitPcs(pr,stockOf(id))+' maujood)'}}}
+  }else if(r.kind==='recovery'){if(!byId('shops',p.shopId))miss.push('shop')}
+  else if(r.kind==='purchase'){(p.items||[]).forEach(it=>needP(it.productId))}
+  else if(r.kind==='return'){if(!byId('shops',p.shopId))miss.push('shop');needP(p.productId)}
+  else if(r.kind==='claim'){needP(p.productId)}
+  else if(r.kind==='count'){(p.lines||[]).forEach(l=>needP(l.productId))}
+  if(miss.length)return{err:'Laptop par '+[...new Set(miss)].join(' / ')+' nahi mila (phone ka data purana ho sakta hai)'};
+  if(r.kind==='order'&&invLimitReached())return{err:'Invoice limit poori ho chuki hai'};
+  return{};
+}
+/* ek entry import karo; kamyab ho to ref (naya number) wapas, warna Error */
+function miApply(r){
+  const c=miCheck(r);if(c.err)throw new Error(c.err);
+  if(!guard(r.date))throw new Error('Day End / backup lock — '+fmtDate(r.date)+' par entry nahi ho sakti');
+  const p=r.p;let ref='';
+  if(r.kind==='order'){
+    const sh=byId('shops',p.shopId);DB.meta.invMade=invUsed()+1;
+    const iv={id:r.id,no:nextNo('inv',S().invoicePrefix||'INV-'),status:'booked',createdBy:p.createdBy||r.by,createdAt:p.createdAt||nowStamp(),mobile:true,date:p.date,deliveryDate:p.deliveryDate||p.date,bookerId:p.bookerId,bookerName:p.bookerName,supplymanId:'',supplyman:'',shopId:sh.id,shopName:sh.name,route:sh.route||p.route||'',payType:p.payType==='cash'?'cash':'credit',accountId:'acc_cash',items:p.items.map(it=>({...it,cost:r2(costPerPc(it.productId))})),gross:N(p.gross),discount:N(p.discount),tax:N(p.tax),net:N(p.net)};
+    DB.invoices.push(iv);ref=iv.no;log('Mobile inbox','Order imported',iv.no,sh.name+' '+money(iv.net));
+  }else if(r.kind==='recovery'){
+    const sh=byId('shops',p.shopId);
+    DB.recoveries.push({id:uid(),date:p.date||r.date,collectorId:p.collectorId||'',collector:p.collector||r.by,shopId:sh.id,shopName:sh.name,expected:N(p.expected),amount:N(p.amount),short:N(p.short),adjustType:'none',adjust:0,staffId:'',staffName:'',method:p.method||'Cash',accountId:'acc_cash',note:[p.note,'(mobile)'].filter(Boolean).join(' '),status:'pending',by:r.by,at:nowStamp(),mobileId:r.id});
+    ref='Recovery (approval pending)';log('Mobile inbox','Recovery imported',sh.name,money(p.amount));
+  }else if(r.kind==='purchase'){
+    const items=p.items.map(it=>purItemFrom(byId('products',it.productId),it.ctn,it.loose,it.costCtn));const total=r2(sum(items,i=>i.amount));
+    items.forEach(it=>{const pr=byId('products',it.productId);if(pr&&N(it.costCtn)>0)pr.costCtn=it.costCtn});
+    const pu={id:uid(),no:nextNo('pur',S().purchasePrefix||'PUR-'),by:r.by,date:p.date||r.date,supplier:p.supplier,ref:p.ref||'',category:'',items,total,paidNow:N(p.paidNow),accountId:'acc_cash',mobileId:r.id};
+    DB.purchases.push(pu);ref=pu.no;log('Mobile inbox','Purchase imported',pu.no,pu.supplier+' '+money(total));
+  }else if(r.kind==='return'){
+    const sh=byId('shops',p.shopId),pr=byId('products',p.productId);
+    DB.returns.push({id:uid(),kind:'item',date:p.date||r.date,shopId:sh.id,shopName:sh.name,productId:pr.id,productName:pr.name,pcs:N(p.pcs),rate:N(p.rate),amount:r2(N(p.pcs)*N(p.rate)),settle:p.settle==='cash'?'cash':'credit',accountId:'acc_cash',toStock:!!p.toStock,reason:p.reason||'',by:r.by,mobileId:r.id});
+    ref='Return';log('Mobile inbox','Return imported',sh.name,pr.name+' '+N(p.pcs)+' pcs');
+  }else if(r.kind==='claim'){
+    const pr=byId('products',p.productId);
+    const cl={id:uid(),no:nextNo('clm',S().claimPrefix||'CLM-'),date:p.date||r.date,supplier:p.supplier,productId:pr.id,productName:pr.name,type:p.type||'Damage',pcs:N(p.pcs),rate:N(p.rate),amount:r2(N(p.pcs)*N(p.rate)),deductStock:!!p.deductStock,reason:p.reason||'',status:'pending',by:r.by,mobileId:r.id};
+    DB.claims.push(cl);ref=cl.no;log('Mobile inbox','Claim imported',cl.no,money(cl.amount));
+  }else if(r.kind==='count'){
+    let n=0;(p.lines||[]).forEach(l=>{const d=Math.round(N(l.diff));if(!d)return;DB.stockAdj.push({id:uid(),date:p.date||r.date,productId:l.productId,pcs:d,reason:'Stock count (mobile)'+(p.note?': '+p.note:''),by:r.by,mobileId:r.id});n++});
+    ref=n?n+' stock adjustments':'Koi farq nahi';log('Mobile inbox','Stock count imported',r.by,n+' adjustments');
+  }
+  DB.mobileDone[r.id]={at:nowStamp(),by:ME.username,ref,kind:r.kind,summary:r.summary};
+  clearCache();return ref;
+}
+function miDetailHTML(r){
+  const p=r.p;let h=`<div class="meta"><div><b>Type:</b> ${MI_KIND[r.kind]}</div><div><b>Date:</b> ${fmtDate(r.date)}</div><div><b>By:</b> ${esc(r.by)}</div><div><b>Entry:</b> ${esc(r.summary)}</div></div>`;
+  if(r.kind==='order')h+=table([{t:'Product'},{t:'Qty'},{t:'Rate',n:1},{t:'Disc',n:1},{t:'Amount',n:1}],p.items.map(it=>[esc(it.name),splitPcs({packing:it.packing},it.pcs),fmt(it.rate),fmt(it.disc),fmt(it.gross-it.disc)]),['Net','','','',fmt(p.net)])+`<p>${p.payType==='cash'?'Cash':'Credit'} • Delivery ${fmtDate(p.deliveryDate)}</p>`;
+  else if(r.kind==='recovery')h+=`<p><b>${esc(p.shopName)}</b> — ${esc(p.method)} — <b>${money(p.amount)}</b> (baqaya tha ${money(p.expected)})</p>${p.note?`<p>${esc(p.note)}</p>`:''}`;
+  else if(r.kind==='purchase')h+=table([{t:'Product'},{t:'Ctn',n:1},{t:'Loose',n:1},{t:'Cost/ctn',n:1},{t:'Amount',n:1}],p.items.map(it=>[esc(it.name),it.ctn,it.loose,fmt(it.costCtn),fmt(it.amount)]),['Total','','','',fmt(p.total)])+`<p>${esc(p.supplier)} ${p.ref?'• Inv '+esc(p.ref):''} • Paid ${money(p.paidNow)}</p>`;
+  else if(r.kind==='return')h+=`<p><b>${esc(p.shopName)}</b> — ${esc(p.productName)} × ${N(p.pcs)} pcs @ ${fmt(p.rate)} = ${money(p.amount)}</p><p>${p.settle==='cash'?'Cash wapas':'Balance se minus'} • ${p.toStock?'Stock mein wapas':'Kharab / expiry'} • ${esc(p.reason)}</p>`;
+  else if(r.kind==='claim')h+=`<p><b>${esc(p.supplier)}</b> — ${esc(p.productName)} × ${N(p.pcs)} pcs @ ${fmt(p.rate)} = ${money(p.amount)}</p><p>${esc(p.type)} • ${p.deductStock?'Stock se kam hoga':'Stock se kam nahi'} • ${esc(p.reason)}</p>`;
+  else if(r.kind==='count')h+=table([{t:'Product'},{t:'Phone system',n:1},{t:'Ginti',n:1},{t:'Farq',n:1}],p.lines.map(l=>[esc(l.name),fmt(l.systemPcs),fmt(l.countedPcs),fmt(l.diff)]))+(p.note?`<p>${esc(p.note)}</p>`:'')+'<p class="muted small">Farq (ginti − phone ka system stock) stock adjustment ki tarah laga diya jata hai.</p>';
+  return h;
+}
+VIEWS.mobileInbox=el=>{
+  if(!FS.ok){el.innerHTML=`<div class="card"><h3>Mobile inbox</h3><p>Firestore abhi configure nahi hai (Client code / Firebase config). Developer se Order sync settings mein save karwayein.</p>${isDev()?'<div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div>':''}</div>`;return}
+  el.innerHTML=`<div class="card"><h3>Mobile inbox (NexaFlow Field)<span class="sp"></span><button class="btn sm" id="miRef">🔄 Refresh</button></h3>
+    <p class="muted small">Booker / Store Manager ki APK se aayi entries. Import karne par laptop ke records (invoice, recovery, purchase, return, claim, stock) ban jate hain. Recovery "Pending" mein aati hai — Market recovery mein approve karein.</p>
+    <div class="grid">${F('Type',sel('miK',Object.entries(MI_KIND).map(([v,t])=>({v,t})),MI.kind,'All'))}${F('Show',sel('miS',[{v:'new',t:'Pending import'},{v:'done',t:'Imported / ignored'}],MI.show))}</div>
+    <p class="msg small" id="miMsg"></p><div class="mt" id="miOut"></div></div>`;
+  const msg=(t,k)=>{const m=$('#miMsg');if(m){m.textContent=t;m.className='msg small '+(k||'')}};
+  const load=async()=>{MI.busy=true;msg('Mobile entries la raha hai…');
+    try{MI.rows=await miFetch();MI.err='';MI.at=Date.now()}catch(e){MI.err=e.net?'Internet nahi hai ya bohat slow hai.':(e.message+(e.http===403?' — naye firestore.rules Publish karein.':''))}
+    MI.busy=false;if(CUR==='mobileInbox'){msg(MI.err,'err');draw()}};
+  const draw=()=>{
+    const o=$('#miOut');if(!o)return;if(!MI.rows){o.innerHTML=MI.busy?'':'<div class="empty">Refresh dabayein.</div>';return}
+    const list=MI.rows.filter(r=>(!MI.kind||r.kind===MI.kind)&&(MI.show==='done')===!!miDone(r));
+    if(MI.show==='done'){
+      o.innerHTML=table([{t:'Date'},{t:'Type'},{t:'By'},{t:'Entry'},{t:'Amount',n:1},{t:'Imported'},{t:''}],list.slice().reverse().map(r=>{const d=miDone(r);return[fmtDate(r.date),MI_KIND[r.kind],esc(r.by),esc(r.summary),r.amount?fmt(r.amount):'',esc((d.ref||'')+(d.at?' • '+d.at:'')),`<button class="btn sm" data-miv="${r.id}">👁</button>`]}));
+    }else{
+      const st=list.map(r=>({r,c:miCheck(r)}));
+      o.innerHTML=(st.length?`<div class="row" style="margin-bottom:8px"><button class="btn sm pri" id="miAll">⬇ Selected import</button><button class="btn sm" id="miIgn">🚫 Selected ignore</button></div>`:'')+
+        table([{t:'✓'},{t:'Date'},{t:'Type'},{t:'By'},{t:'Entry'},{t:'Amount',n:1},{t:'Status'},{t:''}],st.map(({r,c})=>[`<input type="checkbox" data-mik="${r.id}" ${c.err?'':'checked'}>`,fmtDate(r.date),MI_KIND[r.kind],esc(r.by),esc(r.summary),r.amount?fmt(r.amount):'',c.err?badge(c.err,'bad'):badge('Tayyar','ok'),
+          `<div class="row"><button class="btn sm" data-miv="${r.id}">👁</button><button class="btn sm pri" data-mii="${r.id}"${c.err?' disabled':''}>Import</button><button class="btn sm bad" data-mig="${r.id}">🚫</button></div>`]),['','','','','Pending: '+st.length,fmt(sum(st,x=>x.r.amount)),'','']);
+    }
+    const byRid=id=>MI.rows.find(r=>r.id===id);
+    $$('#miOut [data-miv]').forEach(b=>b.onclick=()=>{modal('Mobile entry',miDetailHTML(byRid(b.dataset.miv)));$('.modal').classList.add('wide')});
+    const doImport=rows=>{let ok=0;const bad=[];
+      rows.forEach(r=>{try{miApply(r);ok++}catch(e){bad.push(r.summary+': '+e.message)}});
+      if(ok)save();
+      toast(ok+' import ho gayi'+(bad.length?', '+bad.length+' fail: '+bad[0]:''),bad.length>0);draw()};
+    $$('#miOut [data-mii]').forEach(b=>b.onclick=()=>doImport([byRid(b.dataset.mii)]));
+    $$('#miOut [data-mig]').forEach(b=>b.onclick=()=>confirmBox('Yeh entry ignore karein? Dobara import nahi hogi.',()=>{const r=byRid(b.dataset.mig);DB.mobileDone[r.id]={at:nowStamp(),by:ME.username,ref:'Ignored',kind:r.kind,summary:r.summary};log('Mobile inbox','Ignored',r.summary);save();draw()}));
+    const picked=()=>$$('#miOut [data-mik]:checked').map(c=>byRid(c.dataset.mik));
+    if($('#miAll'))$('#miAll').onclick=()=>{const l=picked();if(!l.length)return toast('Pehle entries tick karein.',true);doImport(l)};
+    if($('#miIgn'))$('#miIgn').onclick=()=>{const l=picked();if(!l.length)return toast('Pehle entries tick karein.',true);confirmBox(l.length+' entries ignore karein? Dobara import nahi hongi.',()=>{l.forEach(r=>DB.mobileDone[r.id]={at:nowStamp(),by:ME.username,ref:'Ignored',kind:r.kind,summary:r.summary});log('Mobile inbox','Ignored',l.length+' entries');save();draw()})};
+  };
+  $('#miRef').onclick=load;$('#miK').onchange=()=>{MI.kind=V('miK');draw()};$('#miS').onchange=()=>{MI.show=V('miS');draw()};
+  if(MI.err)msg(MI.err,'err');
+  draw();if(!MI.rows||Date.now()-MI.at>60000)load();
+};
+
 /* ---------- ADMIN / DEVELOPER: Firestore settings ---------- */
 const FS_RULES=`rules_version = '2';
 service cloud.firestore {
@@ -2502,6 +2621,14 @@ service cloud.firestore {
           allow read: if signedIn();
           allow delete: if false;
         }
+      }
+
+      // NexaFlow Field (mobile APK): recovery, purchase, return, claim aur stock-count entries (create-only)
+      match /inbox/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.id == id
+                      && request.resource.data.kind is string && request.resource.data.byId is string;
+        allow update, delete: if false;
       }
 
       // Day End: sirf ek baar likha ja sakta hai, phir kabhi badla ya mitaya nahi ja sakta
@@ -2939,6 +3066,7 @@ function showProductLedger(p){if(!p)return;
   activeInv().forEach(iv=>iv.items.forEach(it=>{if(it.productId===p.id)add(iv.date,'Sale',iv.no,-N(it.pcs),iv.shopName)}));
   DB.returns.forEach(r=>{if(r.toStock&&r.productId===p.id)add(r.date,'Return',r.no||'Return',r.pcs,r.reason||r.shopName)});
   DB.claims.forEach(c=>{if(c.deductStock&&c.productId===p.id)add(c.date,'Claim',c.no||'Claim',-N(c.pcs),c.reason||c.company)});
+  (DB.stockAdj||[]).forEach(a=>{if(a.productId===p.id)add(a.date,'Adjustment','Stock count',a.pcs,a.reason)});
   mv.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   let bal=N(p.openingPcs);const rows=[['','Opening stock','','','',fmt(bal),'']];
   mv.forEach(m=>{bal+=m.q;rows.push([m.date?fmtDate(m.date):'',esc(m.type),esc(m.ref),m.q>0?fmt(m.q):'',m.q<0?fmt(-m.q):'',fmt(bal),esc(m.note)])});
@@ -3334,7 +3462,7 @@ VIEWS.storeReports=el=>{
   if(ME.role!=='storemanager'&&ME.role!=='developer'){el.innerHTML='<div class="card">This report is available to Store Managers only.</div>';return}
   const monthStart=()=>today().slice(0,8)+'01';
   el.innerHTML=`<div class="card"><h3>Store Manager — Stock Control Reports</h3><p class="muted">Track stock received, sold/issued, returned, claimed and closing balance by date and product.</p>
-    <div class="grid">${F('From date',inp('smFrom',monthStart(),'date'))}${F('To date',inp('smTo',today(),'date'))}${F('Product',sel('smProd',DB.products.map(p=>({v:p.id,t:p.name})).sort((a,b)=>a.t.localeCompare(b.t)),'','All products'))}${F('Movement type',sel('smType',[{v:'',t:'All movements'},{v:'Purchase',t:'Purchase / stock received'},{v:'Sale',t:'Sales / stock out'},{v:'Return',t:'Returns to stock'},{v:'Claim',t:'Claims / damaged stock'}],''))}</div>
+    <div class="grid">${F('From date',inp('smFrom',monthStart(),'date'))}${F('To date',inp('smTo',today(),'date'))}${F('Product',sel('smProd',DB.products.map(p=>({v:p.id,t:p.name})).sort((a,b)=>a.t.localeCompare(b.t)),'','All products'))}${F('Movement type',sel('smType',[{v:'',t:'All movements'},{v:'Purchase',t:'Purchase / stock received'},{v:'Sale',t:'Sales / stock out'},{v:'Return',t:'Returns to stock'},{v:'Claim',t:'Claims / damaged stock'},{v:'Adjustment',t:'Stock count adjustments'}],''))}</div>
     <div class="row mt"><button class="btn pri" id="smRun">Generate report</button><button class="btn" id="smPrint">🖨️ Print</button><button class="btn" id="smXls">📊 Excel</button></div></div><div id="smOut"></div>`;
   let result=null;
   const build=()=>{
@@ -3346,6 +3474,7 @@ VIEWS.storeReports=el=>{
     activeInv().forEach(iv=>(iv.items||[]).forEach(it=>add(iv.date,'Sale',iv.no,it.productId,-N(it.pcs),iv.shopName||'')));
     DB.returns.forEach(r=>{if(r.toStock)add(r.date,'Return',r.no||'Return',r.productId,r.pcs,r.reason||r.shopName||'Returned to stock')});
     DB.claims.forEach(c=>{if(c.deductStock)add(c.date,'Claim',c.no||'Claim',c.productId,-N(c.pcs),c.reason||c.company||'Stock deducted')});
+    (DB.stockAdj||[]).forEach(a=>add(a.date,'Adjustment','Stock count',a.productId,a.pcs,a.reason||'Stock count'));
     moves.sort((a,b)=>a.date.localeCompare(b.date)||a.product.localeCompare(b.product));
     const products=(pid?[byId('products',pid)].filter(Boolean):DB.products).map(p=>{const opening=stockAsOf(p.id,from<'0000'?from:shiftDate(from,-1));const inQty=sum(moves.filter(m=>m.productId===p.id&&m.qty>0),m=>m.qty),outQty=-sum(moves.filter(m=>m.productId===p.id&&m.qty<0),m=>m.qty),closing=stockAsOf(p.id,to);return {p,opening,inQty,outQty,closing,value:Math.max(0,closing)*costPerPc(p.id)}});
     const rows=moves.map(m=>[fmtDate(m.date),m.type,m.ref,m.product,splitPcs({packing:m.packing},Math.abs(m.qty))+(m.qty<0?' OUT':' IN'),fmt(m.qty),m.detail]);
