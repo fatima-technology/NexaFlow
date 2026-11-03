@@ -2698,7 +2698,7 @@ const License={st:null,_t:null,
     this._last=Date.now();let ok=false;
     try{
       const d=await withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root(),{method:'GET'},s));const o=FS.un(d);Net.set(true);
-      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),updateTo:String(o.updateTo||''),updateAll:'',checkedAt:Date.now()};ok=true;
+      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),updateTo:String(o.updateTo||''),updateMode:o.updateMode==='manual'?'manual':'auto',updateAll:'',checkedAt:Date.now()};ok=true;
       try{const g=await withTimeout(OSYNC.TIMEOUT,s=>FS.req('/config/update',{method:'GET'},s));this.st.updateAll=String(FS.un(g).version||'')}catch(e){}
       if(window.nexaDesktop&&nexaDesktop.version)withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root()+'?updateMask.fieldPaths=appVersion&updateMask.fieldPaths=lastSeenMs',{method:'PATCH',body:FS.doc({appVersion:nexaDesktop.version,lastSeenMs:Date.now()})},s)).catch(()=>{});
     }catch(e){
@@ -2728,11 +2728,15 @@ const Upd={busy:false,hooked:false,latest:'',_chk:0,_auto:false,_w:0,
   valid:v=>/^\d+\.\d+\.\d+$/.test(String(v||'')),
   cmp(a,b){const x=String(a).split('.').map(Number),y=String(b).split('.').map(Number);for(let i=0;i<3;i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0},
   /* sab se nayi version: master ka bheja hua (client / sab) YA GitHub ki sab se nayi release (khud-ba-khud) */
-  target(){const st=License.st||{};return[st.updateTo,st.updateAll,this.latest].filter(v=>this.valid(v)).sort((a,b)=>this.cmp(b,a))[0]||''},
+  /* Update mode (master har client ke liye set karta hai): auto = nayi version khud; manual = sirf wohi jo master is client ko bheje */
+  mode(){const st=License.st;return st&&st.updateMode==='manual'?'manual':'auto'},
+  target(){const st=License.st||{};const c=this.mode()==='manual'?[st.updateTo]:[st.updateTo,st.updateAll,this.latest];return c.filter(v=>this.valid(v)).sort((a,b)=>this.cmp(b,a))[0]||''},
   /* GitHub par jo release publish hui (installer + latest.yml ke saath) un mein se sab se nayi */
   async checkLatest(force){
     if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return;
     if(!force&&Date.now()-this._chk<25*60*1000)return;this._chk=Date.now();
+    /* khulte waqt: pehle is client ka taaza Update mode (master ne manual kiya ho to khud-install nahi hona chahiye) */
+    try{await Orders.init();if(!License.st)await License.load();if(FS.ok&&performance.now()<120000)await License.check(true)}catch(e){}
     try{
       const r=await withTimeout(15000,s=>fetch('https://api.github.com/repos/fatima-technology/NexaFlow/releases?per_page=20',{signal:s,headers:{Accept:'application/vnd.github+json'}}));
       if(!r.ok)return;const l=await r.json();
@@ -2740,7 +2744,7 @@ const Upd={busy:false,hooked:false,latest:'',_chk:0,_auto:false,_w:0,
     }catch(e){}
     this.refresh();
     /* app abhi khuli hai (pehle 2 minute): nayi version ho to khud install shuru — kaam ke beech mein nahi */
-    const t=this.available();if(t&&!this.busy&&!this._auto&&performance.now()<120000){this._auto=true;this.run(t)}},
+    const t=this.available();if(t&&!this.busy&&!this._auto&&performance.now()<120000&&this.mode()==='auto'){this._auto=true;this.run(t)}},
   watch(){
     if(this._w||!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return;this._w=1;
     this.checkLatest(true);setInterval(()=>this.checkLatest(),30*60*1000);
@@ -2765,7 +2769,7 @@ const MC={rows:null,err:'',all:''};
 VIEWS.clients=el=>{
   if(!isDev()){el.innerHTML='';return}
   el.innerHTML=`<div class="card"><h3>Clients (master panel)<span class="sp"></span>${CloudBackup.ownerTok?'<button class="btn pri" id="mcNew">➕ Naya client</button>':''}</h3>
-    ${CloudBackup.ownerTok?`<div class="row" style="align-items:end;margin-bottom:10px"><div class="f" style="max-width:240px"><label>Sab clients ke liye update version <span class="muted small">(abhi: <b id="mcAll">—</b>)</span></label><input id="mcUv" placeholder="jaise 1.1.0"></div><button class="btn" id="mcUall">⬆️ Sab ko update bhejein</button></div><p class="small muted">Pehle GitHub → Actions → <b>Release Windows exe</b> mein wohi version release karein. Jis client ko Update bhejenge usi ki app mein "Update" button dikhega. Sirf ek client ke liye us ki row mein <b>⬆️ Update</b> dabayein.</p>`:''}
+    ${CloudBackup.ownerTok?`<div class="row" style="align-items:end;margin-bottom:10px"><div class="f" style="max-width:240px"><label>Sab clients ke liye update version <span class="muted small">(abhi: <b id="mcAll">—</b>)</span></label><input id="mcUv" placeholder="jaise 1.1.0"></div><button class="btn" id="mcUall">⬆️ Sab ko update bhejein</button></div><p class="small muted">Pehle GitHub → Actions → <b>Release Windows exe</b> mein wohi version release karein. Jis client ko Update bhejenge usi ki app mein "Update" button dikhega. Sirf ek client ke liye us ki row mein <b>⬆️ Update</b> dabayein.<br><b>Update mode:</b> <b>Auto</b> = GitHub par nayi version aate hi client ki app khud update ho jati hai (mobile bhi). <b>Manual (hold)</b> = sirf wohi version lagti hai jo aap is client ko ⬆️ Update se bhejein; "Sab ko update" aur khud-update us par nahi lagte, aur us ke phones par naya mobile code bhi ruka rehta hai.</p>`:''}
     <p class="muted">Har client ka code, expiry aur fees yahan se control hoti hai. Sab clients ek hi Firebase project mein hain; har ka data apne code ke neeche alag. Master <b>email/password</b> (Firebase Authentication ka) session ke liye use hota hai, save nahi hota.</p>
     ${CloudBackup.ownerTok?'':`<div class="grid">${F('Master email',inp('mcE','','email'))}${F('Password',inp('mcP','','password'))}</div><div class="row mt"><button class="btn pri" id="mcLogin">🔓 Master login</button></div>`}
     <p class="msg small" id="mcMsg">${esc(MC.err)}</p><div class="mt" id="mcOut"></div></div>`;
@@ -2780,13 +2784,16 @@ VIEWS.clients=el=>{
   const extend=(c,months)=>{const base=Math.max(Date.now(),N(c.expiryMs));const d=new Date(base);d.setMonth(d.getMonth()+months);
     return{...c,expiryMs:d.getTime(),lastPaidMs:Date.now(),paidTotal:N(c.paidTotal)+N(c.fee)*months,active:true}};
   const draw=()=>{const o=$('#mcOut');if(!o||!MC.rows)return;
-    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:'App version'},{t:''}],MC.rows.map((c,i)=>{
+    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:'App version'},{t:'Update mode'},{t:''}],MC.rows.map((c,i)=>{
       const d=c.expiryMs>0?Math.ceil((c.expiryMs-Date.now())/864e5):null;
       const stt=c.active===false?badge('Band','bad'):d!==null&&d<0?badge('Expire','bad'):d!==null&&d<=7?badge(d+' din baqi','warn'):badge('Chalu','ok');
       return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',(c.appVersion?'v'+esc(c.appVersion):'—')+(c.updateTo?' <span class="muted small">→ v'+esc(c.updateTo)+'</span>':'')+(c.lastSeenMs?'<div class="muted small">'+new Date(N(c.lastSeenMs)).toLocaleDateString()+'</div>':''),
+        `<select data-um="${i}" title="Auto: nayi version khud lagti hai. Manual: sirf wohi jo aap bhejein; mobile par naya code ruk jata hai.">${opt([{v:'auto',t:'Auto'},{v:'manual',t:'Manual'}],c.updateMode==='manual'?'manual':'auto')}</select>`,
         `<button class="btn sm" data-up="${i}">⬆️ Update</button> <button class="btn sm" data-ed="${i}">Edit</button> <button class="btn sm" data-m1="${i}">💰 +1 mahina</button> <button class="btn sm" data-m12="${i}">+1 saal</button> <button class="btn sm" data-cp="${i}">📋 Code</button>`]}));
     const bind=(attr,fn)=>$$('#mcOut ['+attr+']').forEach(x=>x.onclick=()=>fn(MC.rows[+x.getAttribute(attr)]));
     bind('data-ed',c=>form(c));
+    $$('#mcOut [data-um]').forEach(x=>x.onchange=async()=>{const c=MC.rows[+x.dataset.um];const m=x.value==='manual'?'manual':'auto';
+      try{await save(c.code,{...c,updateMode:m});c.updateMode=m;toast(c.name+': Update mode '+(m==='manual'?'Manual (hold) — sirf aap ka bheja hua version lagega':'Auto — nayi version khud lagegi')+'.')}catch(e){x.value=c.updateMode==='manual'?'manual':'auto';toast(e.message,true)}});
     bind('data-up',c=>modal('Update bhejein: '+c.name,`<div class="grid">${F('Version (khali = update wapas lein)',inp('mcUp',c.updateTo||MC.all||'','text','placeholder="jaise 1.1.0"'))}</div><p class="small muted">Sirf is client ki app mein Update button aayega. Version pehle GitHub par release hona chahiye.</p>`,[{t:'Bhejein',pri:1,fn:async()=>{const v=V('mcUp');if(v&&!Upd.valid(v))return toast('Version aise likhein: 1.1.0',true);try{await save(c.code,{...c,updateTo:v});closeModal();toast(v?'Update bhej diya.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}}}]));
     const pay=(c,m)=>confirmBox(c.name+': '+m+' mahine ki fees mil gayi? Expiry aage barh jayegi.',async()=>{try{await save(c.code,extend(c,m));toast('Expiry barh gayi.');load()}catch(e){toast(e.message,true)}});
     bind('data-m1',c=>pay(c,1));bind('data-m12',c=>pay(c,12));

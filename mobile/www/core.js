@@ -67,6 +67,17 @@ function withTimeout(ms,fn){
   return fn(ac.signal).catch(e=>{if(ac.signal.aborted)throw Object.assign(new Error('Server ka jawab nahi aaya (timeout).'),{net:true});if(!e.http)e.net=true;throw e}).finally(()=>clearTimeout(t));
 }
 
+/* ---------- Update mode: the master can put a client on "manual" (hold): then this phone does not take new app code ---------- */
+async function updateMode(){
+  if(!FS.code)return'auto';
+  try{
+    const d=await withTimeout(10000,s=>FS.req(FS.root(),{method:'GET'},s));
+    const m=FS.un(d).updateMode==='manual'?'manual':'auto';
+    await DB.setkv('updMode',m);return m;
+  }catch(e){return(await DB.kv('updMode'))==='manual'?'manual':'auto'}
+}
+window.nfUpdateMode=updateMode;
+
 /* ---------- master data (from the laptop's latest Cloud backup) ---------- */
 let M=null;        // {code, bk:{id,date,createdAtMs}, settings, users, shops, products, suppliers, fetchedAtMs}
 async function gunzip(enc,data){
