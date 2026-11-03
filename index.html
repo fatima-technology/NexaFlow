@@ -3838,7 +3838,20 @@ async function installApp(){
   if(_ios)toast('Safari mein Share dabayein, phir "Add to Home Screen"');
 }
 _showInstall();
-if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('Offline cache off:',e)));
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&!window.NexaApk)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('Offline cache off:',e)));
+
+/* ---------- NexaFlow Android app (APK): shell loader.js is in mobile-full/. Yeh hissa sirf APK ke andar chalta hai ---------- */
+/* loader.js poochta hai: is client ka Update mode kya hai? (manual ho to naya code download nahi hota) */
+window.nfUpdateMode=async()=>{try{await Orders.init();if(!License.st)await License.load();if(FS.ok&&Net.up)await License.check(true)}catch(e){}return Upd.mode()};
+/* naya code phone mein aa gaya: login screen par foran restart, kaam ke beech mein banner */
+window.addEventListener('nexaflow-update-ready',()=>{
+  if(!window.NexaApk)return;if(!ME){NexaApk.apply();return}
+  if(document.getElementById('apkUpd'))return;
+  const b=document.createElement('div');b.id='apkUpd';b.style.cssText='position:fixed;left:12px;right:12px;bottom:14px;z-index:9998;background:#0D3A50;color:#fff;border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.3)';
+  b.innerHTML='<span style="flex:1">🆕 Naya update tayyar hai</span><button class="btn pri" id="apkUpdGo">Abhi lagayein</button>';
+  document.body.appendChild(b);document.getElementById('apkUpdGo').onclick=()=>NexaApk.apply()});
+/* app theek se start ho gayi: loader ko batao (warna naya code 15 sec baad hata diya jata hai) */
+if(window.NexaApk&&NexaApk.ready)NexaApk.ready();
 </script>
 
 <script>

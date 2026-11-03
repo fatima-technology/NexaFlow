@@ -11,7 +11,9 @@ function check(name, code) {
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 let n = 0;
 html.replace(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi, (m, code) => { n++; if (code.trim()) check('index.html script #' + n, code); return m; });
-const mob = path.join(root, 'mobile', 'www');
-if (fs.existsSync(mob)) for (const f of fs.readdirSync(mob)) if (f.endsWith('.js')) check('mobile/www/' + f, fs.readFileSync(path.join(mob, f), 'utf8'));
+for (const dirName of ['mobile', 'mobile-full']) {
+  const mob = path.join(root, dirName, 'www');
+  if (fs.existsSync(mob)) for (const f of fs.readdirSync(mob)) if (f.endsWith('.js')) check(dirName + '/www/' + f, fs.readFileSync(path.join(mob, f), 'utf8'));
+}
 if (bad) process.exit(1);
 console.log('Syntax check OK (' + n + ' inline scripts + mobile files).');

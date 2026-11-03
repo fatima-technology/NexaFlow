@@ -1,0 +1,18 @@
+{
+  "name": "nexaflow-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NexaFlow - full Android app (same app as the Windows exe)",
+  "scripts": {
+    "prepare-www": "node scripts/prepare-www.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.1.2",
+    "@capacitor/core": "6.1.2",
+    "@capacitor/filesystem": "6.0.1",
+    "@capacitor/share": "6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.1.2"
+  }
+}
