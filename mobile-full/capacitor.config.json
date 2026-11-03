@@ -1,0 +1,7 @@
+{
+  "appId": "tech.fatima.nexaflow.app",
+  "appName": "NexaFlow",
+  "webDir": "www",
+  "backgroundColor": "#1a1d3a",
+  "android": { "allowMixedContent": false }
+}

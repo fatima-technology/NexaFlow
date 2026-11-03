@@ -1,0 +1,82 @@
+name: Build Android APK (NexaFlow full app)
+
+# The full NexaFlow app (same app as the Windows exe) as an Android APK. Folder: mobile-full/.
+# The app updates itself over the air from GitHub Pages (mobile-full/www/loader.js), so run this workflow
+# only the first time and when the shell changes (loader.js, icon, capacitor config, plugins).
+# Actions -> Run workflow -> Artifacts -> NexaFlow-App.apk
+#
+# Signing is optional. With the 4 secrets below the APK is signed with your fixed key (new APKs then install
+# over old ones). Without them a debug-signed APK is built (fine for a first install).
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-full
+    env:
+      KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Signing mode
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/nexaflow-app.keystore"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+            echo "Signing with the fixed release key."
+          else
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::No signing secrets found: building a debug-signed APK."
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Syntax check
+        run: node ../desktop/scripts/check-syntax.js
+      - name: Install Capacitor and plugins
+        run: npm install --no-audit --no-fund
+      - name: Copy the app (index.html) and Excel/PDF libraries into www
+        run: node scripts/prepare-www.js
+      - name: Add Android project
+        run: npx cap add android
+      - name: Launcher icon
+        continue-on-error: true
+        run: ./scripts/brand-android.sh
+      - name: Version (rises with every build)
+        run: |
+          sed -i "s/versionCode 1\$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
+      - name: Copy web app into Android project
+        run: npx cap sync android
+      - name: Build release APK (signed)
+        if: env.SIGNED == 'true'
+        working-directory: mobile-full/android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Align and sign APK
+        if: env.SIGNED == 'true'
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/nexaflow-app.keystore" --ks-pass env:KS_PASS --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS --out NexaFlow-App.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs NexaFlow-App.apk
+      - name: Build debug APK (no signing secrets)
+        if: env.SIGNED != 'true'
+        working-directory: mobile-full/android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Rename debug APK
+        if: env.SIGNED != 'true'
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk NexaFlow-App.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NexaFlow-App-APK
+          path: mobile-full/NexaFlow-App.apk
