@@ -2724,10 +2724,27 @@ const License={st:null,_t:null,
 };
 
 /* ---------- UPDATE: master jis client (ya sab) ko version bheje, usi ko "Update" button dikhta hai (sirf .exe mein) ---------- */
-const Upd={busy:false,hooked:false,
+const Upd={busy:false,hooked:false,latest:'',_chk:0,_auto:false,_w:0,
   valid:v=>/^\d+\.\d+\.\d+$/.test(String(v||'')),
   cmp(a,b){const x=String(a).split('.').map(Number),y=String(b).split('.').map(Number);for(let i=0;i<3;i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0},
-  target(){const st=License.st;if(!st)return'';return[st.updateTo,st.updateAll].filter(v=>this.valid(v)).sort((a,b)=>this.cmp(b,a))[0]||''},
+  /* sab se nayi version: master ka bheja hua (client / sab) YA GitHub ki sab se nayi release (khud-ba-khud) */
+  target(){const st=License.st||{};return[st.updateTo,st.updateAll,this.latest].filter(v=>this.valid(v)).sort((a,b)=>this.cmp(b,a))[0]||''},
+  /* GitHub par jo release publish hui (installer + latest.yml ke saath) un mein se sab se nayi */
+  async checkLatest(force){
+    if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return;
+    if(!force&&Date.now()-this._chk<25*60*1000)return;this._chk=Date.now();
+    try{
+      const r=await withTimeout(15000,s=>fetch('https://api.github.com/repos/fatima-technology/NexaFlow/releases?per_page=20',{signal:s,headers:{Accept:'application/vnd.github+json'}}));
+      if(!r.ok)return;const l=await r.json();
+      this.latest=(Array.isArray(l)?l:[]).filter(x=>x&&!x.draft&&!x.prerelease&&/^v\d+\.\d+\.\d+$/.test(String(x.tag_name))&&(x.assets||[]).some(a=>a.name==='latest.yml')).map(x=>x.tag_name.slice(1)).sort((a,b)=>this.cmp(b,a))[0]||'';
+    }catch(e){}
+    this.refresh();
+    /* app abhi khuli hai (pehle 2 minute): nayi version ho to khud install shuru — kaam ke beech mein nahi */
+    const t=this.available();if(t&&!this.busy&&!this._auto&&performance.now()<120000){this._auto=true;this.run(t)}},
+  watch(){
+    if(this._w||!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return;this._w=1;
+    this.checkLatest(true);setInterval(()=>this.checkLatest(),30*60*1000);
+    window.addEventListener('online',()=>setTimeout(()=>this.checkLatest(),2000));window.addEventListener('focus',()=>this.checkLatest())},
   available(){if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return'';const t=this.target();return t&&this.cmp(t,nexaDesktop.version)>0?t:''},
   refresh(){const b=document.getElementById('updBtn');if(!b)return;
     if(!this.hooked&&window.nexaDesktop&&nexaDesktop.onUpdate){this.hooked=true;nexaDesktop.onUpdate(m=>this.on(m))}
@@ -2740,6 +2757,8 @@ const Upd={busy:false,hooked:false,
     else if(m.type==='none'){this.busy=false;if(msg)msg.textContent='Aap pehle se is version par hain.'}
     else if(m.type==='error'){this.busy=false;if(msg)msg.textContent='Update nahi ho saka: '+(m.message||'')+' — internet check karein ya developer se rabta karein.'}}
 };
+
+setTimeout(()=>Upd.watch(),3000);
 
 /* ---------- MASTER: Clients (code, expiry, fees) ---------- */
 const MC={rows:null,err:'',all:''};
