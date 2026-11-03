@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "prepare-app": "node scripts/prepare-app.js",
-    "dist": "node scripts/prepare-app.js && electron-builder --win nsis --x64",
+    "dist": "node scripts/prepare-app.js && electron-builder --win nsis --x64 --publish never",
     "release": "node scripts/prepare-app.js && electron-builder --win nsis --x64 --publish always"
   },
   "devDependencies": {
