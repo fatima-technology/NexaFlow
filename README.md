@@ -42,7 +42,12 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Cloud backups** screen master login se sab clients ke backups dikhati hai (Client column ke saath).
 - Nota: client ka login Firebase Auth se juda nahi (anonymous auth), is liye client ka code hi uski hifazat hai; code kisi ko na batayein.
 
-## Windows .exe ab GitHub Pages se khulta hai
-- `.exe` ab `https://fatima-technology.github.io/NexaFlow/` load karta hai (Cloudflare worker hata diya gaya hai). PR merge hote hi GitHub Pages par nayi version aati hai aur `.exe` khud update ho jata hai.
-- Purani `.exe` jo workers.dev se banti thi ab nahi khulegi: **Build Windows exe** dobara chala kar nayi `.exe` install karein.
-- Dhyan: browser/app ka data (local storage) har website address ke hisaab se alag hota hai, isliye nayi `.exe` pehli baar khali khulegi. Purana data wapas laane ke liye backup file ya Cloud restore (pehli screen par) use karein.
+## Windows .exe: app andar band + "Update" button (master jise chahe usi ko)
+- `.exe` ab web app ko apne andar rakhta hai (`app://nexaflow`), isliye internet ke bina bhi khulta hai aur website mein hone wali tabdeeli **khud sab ko nahi** milti. Nayi version sirf **Update** button se aati hai.
+- **Naya release banana:** GitHub → Actions → **Release Windows exe** → Run workflow → version likhein (jaise `1.1.0`, pichli se bari). Isse GitHub Release `v1.1.0` ban jata hai (installer + `latest.yml`). Pehle PRs merge kar lein, phir release karein.
+- **Sirf ek client ko bhejna:** Developer login → Clients (master) → master login → us client ki row mein **⬆️ Update** → version (`1.1.0`) → Bhejein. Sirf us ki app mein upar **⬆️ Update v1.1.0** button aayega.
+- **Sab clients ko bhejna:** Clients (master) ke upar "Sab clients ke liye update version" mein `1.1.0` likh kar **Sab ko update bhejein**.
+- **Client ke liye:** Update button dabaye → "Update karein?" Yes → download hota hai → app khud install karke dobara khulti hai. Data wahi rehta hai.
+- Master table mein har client ki **installed version** aur aakhri baar dekhne ki tareekh dikhti hai. Update wapas lene ke liye version khali karke bhejein.
+- **Pehli baar (ek hi martaba):** nayi `.exe` manually install karni hai (Actions → Release Windows exe se banne wale Release se `NexaFlow Setup x.y.z.exe`). Ye app ka local data alag jagah rakhta hai, isliye purane exe ka data **backup file** (Backup & day end) ya **Cloud restore** (pehli screen) se wapas laayein. Uske baad kabhi dobara install nahi karna, sirf Update button.
+- Browser mein (developer) website hamesha live version dikhati hai.
