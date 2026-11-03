@@ -45,6 +45,8 @@
   async function check(){
     if(checking||navigator.onLine===false)return;checking=true;
     try{
+      var mode='auto';try{if(window.nfUpdateMode)mode=await window.nfUpdateMode()}catch(e){}
+      if(mode==='manual')return;          // master put this client on manual (hold)
       var remote=await remoteFiles();
       if(!okBundle({files:remote})||!syntaxOk(remote))return;
       var cur=running?running.files:await bundledFiles();

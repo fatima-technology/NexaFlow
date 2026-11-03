@@ -2,6 +2,7 @@
 /* NexaFlow Field — screens for Order Booker and Store Manager */
 let ME=null,TAB='home',ONLINE=navigator.onLine!==false;
 const ST={order:null,rec:null,recv:null,mv:'return',count:null,stockQ:'',stockF:'',ordDate:null,shopQ:''};
+let UPD_MODE='auto';
 const ROLE_LABEL={booker:'Order Booker',storemanager:'Store Manager'};
 const TABS={
   booker:[['home','🏠','Home'],['order','🛒','Order'],['orders','🧾','Orders'],['recovery','💰','Recovery'],['shops','🏪','Shops']],
@@ -40,7 +41,7 @@ const pickBtn=(id,label,ph)=>`<button type="button" class="pick" id="${id}">${la
 /* ---------- boot ---------- */
 async function boot(){
   await DB.open();
-  FS.code=(await DB.kv('code'))||'';FS.auth=await DB.kv('fsAuth');
+  FS.code=(await DB.kv('code'))||'';FS.auth=await DB.kv('fsAuth');UPD_MODE=(await DB.kv('updMode'))==='manual'?'manual':'auto';
   M=await DB.kv('master');await loadLocal();
   const sid=await DB.kv('session');
   if(M&&sid)ME=M.users.find(u=>u.id===sid)||null;
@@ -97,7 +98,7 @@ function loginView(app){
 }
 function menuSheet(){
   const age=Math.floor((Date.now()-M.fetchedAtMs)/3600000);
-  openSheet(`<h2>${esc(ME.name)}</h2><div class="card"><div class="small muted">Data: <b>${fmtDate(M.bk.date)}</b> ka Day End backup • download ${age<1?'abhi':age+' ghante pehle'}</div><div class="small muted">Client: ${esc(FS.code)}</div><div class="small muted">App: ${window.NFOTA&&NFOTA.ver?esc(NFOTA.ver)+(NFOTA.source==='update'?' (online update)':''):'—'}</div></div>
+  openSheet(`<h2>${esc(ME.name)}</h2><div class="card"><div class="small muted">Data: <b>${fmtDate(M.bk.date)}</b> ka Day End backup • download ${age<1?'abhi':age+' ghante pehle'}</div><div class="small muted">Client: ${esc(FS.code)}</div><div class="small muted">App: ${window.NFOTA&&NFOTA.ver?esc(NFOTA.ver)+(NFOTA.source==='update'?' (online update)':''):'—'}${UPD_MODE==='manual'?' • updates: manual (admin ke control mein)':''}</div></div>
    <div class="btns" style="flex-direction:column"><button class="btn block" id="mnRef">⬇ Data refresh (latest backup)</button><button class="btn block" id="mnOut">Logout</button><button class="btn block bad" id="mnCode">Client code badlein</button></div>`,()=>{
     $('#mnOut').onclick=async()=>{await DB.delkv('session');ME=null;closeSheet();render()};
     $('#mnRef').onclick=async()=>{const b=$('#mnRef');b.disabled=true;try{await refreshMaster(t=>{b.textContent=t});ME=M.users.find(u=>u.id===ME.id)||null;closeSheet();toast('Data refresh ho gaya ✓');if(!ME)await DB.delkv('session');render()}catch(e){b.disabled=false;b.textContent='⬇ Data refresh (latest backup)';toast(e.net?'Internet nahi hai.':e.message,true)}};
