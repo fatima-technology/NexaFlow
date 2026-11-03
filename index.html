@@ -1213,8 +1213,11 @@ function nextNo(key,prefix){DB.counters[key]=(DB.counters[key]||0)+1;return pref
 let ME=null;
 const isDev=()=>ME&&ME.role==='developer';
 const isAdmin=()=>ME&&(ME.role==='admin'||ME.role==='developer');
+/* Android APK (NexaFlow Field full app): phone par sirf booking, reports, invoices (PDF) aur booker ka Sync & Day End. Baqi sab laptop se */
+const APK_MODULES=['dashboard','pos','invoices','orderSync','reports','bookerReports','help'];
 function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
+  if(window.NexaApk&&!APK_MODULES.includes(mid))return false;
   if(m.devOnly)return isDev();
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
@@ -1615,6 +1618,7 @@ function printFooter(P){
    `<div class="pd">Printed ${esc(nowStamp())}${ME?' by '+esc(ME.name||ME.username):''} • ${esc(S().devCredit||'')}</div>`;
 }
 function printDoc(type,body,o){
+  if(window.NexaApk){toast('Phone se print nahi hota — PDF ka button istemal karein (invoice ke liye 🖨️ PDF bana deta hai).',true);return}
   o=o||{};const s=S();const P=Object.assign({},defaultPrint()[type]||defaultPrint().report,s.print[type]||{});
   const title=o.title!==undefined?(type==='report'&&P.title&&o.title?P.title+' — '+o.title:o.title):(P.title||'');
   const paper=(P.paper==='A4dual_v'?'A4dual':P.paper)||'A4';const dual=paper==='A4dual';const land=P.orientation==='landscape';
@@ -2174,7 +2178,39 @@ function invoiceBody(iv){
    <table class="tot"><tr><td>Gross</td><td class="n">${fmt(iv.gross)}</td></tr><tr><td>Discount</td><td class="n">${fmt(iv.discount)}</td></tr>${N(iv.tax)?`<tr><td>Tax</td><td class="n">${fmt(iv.tax)}</td></tr>`:''}
    ${iv.payType==='credit'?`<tr><td>Previous balance</td><td class="n">${fmt(prevDue)}</td></tr>`:''}<tr><td>Net payable (this bill)</td><td class="n">${fmt(iv.net)}</td></tr>${iv.payType==='credit'?`<tr><td>Total balance</td><td class="n">${fmt(prevDue+invDue(iv))}</td></tr>`:''}</table>`;
 }
-function printInvoice(iv){printDoc('invoice',invoiceBody(iv))}
+function printInvoice(iv){if(window.NexaApk)return exportInvoicesPDF([iv]);printDoc('invoice',invoiceBody(iv))}
+/* Invoice PDF (phone par print nahi chalta, is liye seedha PDF file; ek ya kai invoices, har invoice alag page) */
+function exportInvoicesPDF(list){
+  list=(list||[]).filter(Boolean);if(!list.length)return;
+  if(!window.jspdf||!window.jspdf.jsPDF)return toast('PDF library load nahi hui. Internet check karke dobara koshish karein.',true);
+  const s=S();const P=Object.assign({},defaultPrint().invoice,s.print.invoice||{});
+  const doc=new window.jspdf.jsPDF({orientation:'portrait',unit:'mm',format:'a4'});const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  list.forEach((iv,pi)=>{
+    if(pi)doc.addPage();
+    const sh=byId('shops',iv.shopId)||{};let y=12;
+    try{if(P.showLogo&&s.logo)doc.addImage(s.logo,'JPEG',10,6,18,18)}catch(e){}
+    doc.setFontSize(15);doc.setFont(undefined,'bold');doc.text(s.companyName||'',W/2,y,{align:'center'});y+=6;
+    doc.setFontSize(9);doc.setFont(undefined,'normal');
+    const cd=[s.address,s.phone&&('Ph: '+s.phone),s.ntn&&('NTN: '+s.ntn)].filter(Boolean).join(' | ');if(cd){doc.text(cd,W/2,y,{align:'center'});y+=5}
+    doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text((P.title||'SALES INVOICE')+(iv.status==='cancelled'?' - CANCELLED':''),W/2,y+2,{align:'center'});y+=9;
+    doc.setFontSize(9);
+    const meta=[['Invoice #',iv.no],['Date',fmtDate(iv.date)],['Shop',iv.shopName],['Delivery',fmtDate(iv.deliveryDate)],['Owner / Ph',[sh.owner,sh.phone].filter(Boolean).join(' / ')],['Route',iv.route||''],['Booker',iv.bookerName],['Payment',iv.payType==='cash'?'Cash':'Credit']];
+    meta.forEach((m,i)=>{const x=i%2?W/2+4:10;if(i%2===0&&i)y+=5;doc.setFont(undefined,'bold');doc.text(m[0]+':',x,y);doc.setFont(undefined,'normal');doc.text(String(m[1]||''),x+24,y,{maxWidth:W/2-34})});y+=4;
+    doc.autoTable({startY:y+2,head:[['#','Item','Ctn / Pcs','Rate','Disc','Amount']],body:iv.items.map((it,i)=>[String(i+1),it.name,splitPcs({packing:it.packing},it.pcs),fmt(it.rate),fmt(it.disc),fmt(it.gross-it.disc)]),
+      styles:{fontSize:8.5,cellPadding:1.6},headStyles:{fillColor:[40,60,66]},columnStyles:{0:{cellWidth:8},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'}},didParseCell:d=>{if(d.section==='head'&&d.column.index>=3)d.cell.styles.halign='right'}});
+    const prevDue=DB.invoices.includes(iv)?shopDue(iv.shopId)-invDue(iv):(iv.shopId?shopDue(iv.shopId):0);
+    const rows=[['Gross',fmt(iv.gross)],['Discount',fmt(iv.discount)]];
+    if(N(iv.tax))rows.push(['Tax',fmt(iv.tax)]);
+    if(iv.payType==='credit')rows.push(['Previous balance',fmt(prevDue)]);
+    rows.push(['Net payable (this bill)',fmt(iv.net)]);
+    if(iv.payType==='credit')rows.push(['Total balance',fmt(prevDue+invDue(iv))]);
+    doc.autoTable({startY:doc.lastAutoTable.finalY+4,body:rows,theme:'plain',tableWidth:78,margin:{left:W-88},styles:{fontSize:9,cellPadding:1.2},columnStyles:{1:{halign:'right'}}});
+    const sig=String(P.signatures||'').split(',').map(x=>x.trim()).filter(Boolean);
+    if(sig.length){const sy=Math.min(H-22,doc.lastAutoTable.finalY+22),cw=(W-20)/sig.length;doc.setFontSize(8);sig.forEach((t,i)=>{const x=10+i*cw;doc.line(x+2,sy,x+cw-6,sy);doc.text(t,x+2,sy+4)})}
+    doc.setFontSize(7);doc.setTextColor(120);doc.text((s.devCredit||'')+'   '+nowStamp(),W/2,H-5,{align:'center'});doc.setTextColor(0);
+  });
+  doc.save(list.length===1?('Invoice_'+String(list[0].no||'').replace(/[^\w\-]+/g,'')+'.pdf'):('Invoices_'+today()+'.pdf'));
+}
 
 /* ---------- SALES INVOICES LIST ---------- */
 VIEWS.invoices=el=>{
@@ -2194,7 +2230,7 @@ VIEWS.invoices=el=>{
     $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);if(!guardEdit(iv.date)||!Orders.guardLock(iv.date))return;confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net));save();run();toast('Deleted.')})});
   };
   ['ivFrom','ivTo','ivDT','ivQ','ivSt'].forEach(id=>$('#'+id).oninput=run);
-  $('#ivPrintSel').onclick=()=>{const ids=$$('#ivOut [data-ck]:checked').map(c=>c.dataset.ck);if(!ids.length)return toast('Tick the invoices first.',true);printDoc('invoice',ids.map(id=>invoiceBody(byId('invoices',id))))};
+  $('#ivPrintSel').onclick=()=>{const ids=$$('#ivOut [data-ck]:checked').map(c=>c.dataset.ck);if(!ids.length)return toast('Tick the invoices first.',true);if(window.NexaApk)return exportInvoicesPDF(ids.map(id=>byId('invoices',id)));printDoc('invoice',ids.map(id=>invoiceBody(byId('invoices',id))))};
   $('#ivXls').onclick=()=>exportExcel('Sales invoices',[{t:'Inv #'},{t:'Date'},{t:'Delivery'},{t:'Shop'},{t:'Booker'},{t:'Supply man'},{t:'Type'},{t:'Gross',n:1},{t:'Discount',n:1},{t:'Net',n:1},{t:'Due',n:1},{t:'Status'}],list.map(i=>[i.no,i.date,i.deliveryDate,i.shopName,i.bookerName,i.supplyman,i.payType,i.gross,i.discount,i.net,invDue(i),i.status]));
   run();
 };

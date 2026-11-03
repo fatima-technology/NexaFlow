@@ -74,6 +74,8 @@ GitHub `main` mein jo bhi tabdeeli merge hoti hai, wo khud clients tak pahunchti
 ## NexaFlow — poori app ki Android APK (exe jaisi, mobile par)
 Folder `mobile-full/`. Ye wohi NexaFlow app hai jo Windows exe mein chalti hai (wohi `index.html`, har screen), phone ke andar.
 - **APK banana (ek baar):** GitHub → Actions → **Build Android APK (NexaFlow full app)** → Run workflow → Artifacts → `NexaFlow-App.apk`. Phone mein install karein.
+- **Phone par sirf ye kaam:** order booking, Reports (aur unke PDF), invoices (PDF), aur booker ka **Sync & Day End**. Baqi sab (purchase, stock, recovery, users, accounts, backup/Day end of admin, settings...) sirf laptop se. Phone ke menu mein baqi screens dikhti hi nahi (`APK_MODULES` in `index.html`).
+- **PDF:** reports ka PDF button aur invoices ka 🖨️ (phone par PDF file banata hai, ek ya kai invoices) — file phone mein save ho kar Share list khulti hai. Urdu/Unicode naam PDF mein nahi chalte (jsPDF ki hadd; laptop ke PDF mein bhi yehi hai).
 - **Data phone mein kaise aaye:** pehli screen par **Cloud se restore** (Client Code daal kar): laptop ke aakhri **Day end + backup** ka poora data phone mein aa jata hai. Phone ka database alag hota hai; phone par kiya hua kaam laptop mein khud wapas nahi jata (laptop aur phone ka live sync nahi hai).
 - **Backup / Excel / PDF downloads:** phone par file save hoti hai aur "Save / Share" ki list khulti hai (Drive, WhatsApp, Files...). Excel/PDF ki libraries APK ke andar hain, internet ke baghair bhi chalti hain.
 - **Print:** phone se seedha print abhi nahi chalta (Android WebView ki hadd); laptop se print karein.
