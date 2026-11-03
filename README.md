@@ -51,3 +51,13 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - Master table mein har client ki **installed version** aur aakhri baar dekhne ki tareekh dikhti hai. Update wapas lene ke liye version khali karke bhejein.
 - **Pehli baar (ek hi martaba):** nayi `.exe` manually install karni hai (Actions → Release Windows exe se banne wale Release se `NexaFlow Setup x.y.z.exe`). Ye app ka local data alag jagah rakhta hai, isliye purane exe ka data **backup file** (Backup & day end) ya **Cloud restore** (pehli screen) se wapas laayein. Uske baad kabhi dobara install nahi karna, sirf Update button.
 - Browser mein (developer) website hamesha live version dikhati hai.
+
+## NexaFlow Field — Android app (Order Booker + Store Manager)
+Alag APK (`mobile/` folder, Capacitor). **Laptop / Windows app mein koi tabdeeli nahi hui** — woh pehle jaisi chalti hai.
+- **Login:** ek hi app; username/password se role ke hisaab se screens khulti hain (laptop par jo Booker / Store Manager users banaye hain wahi).
+- **Data kahan se:** phone laptop ke maujooda **Cloud backup** (har "Day end + backup" par Firestore mein jata hai) se users, shops, products, stock aur shop balances download karta hai (pehli baar **Client Code** daal kar; baad mein menu ⋮ → *Data refresh*). Is liye data utna taaza hai jitna laptop ka aakhri Day End backup.
+- **Booker:** shops, naya order (offline bhi), apne orders, **Sync** (manual, laptop wale flow jaisa), **Day End** (date lock), market recovery, shop balance. Orders usi `clients/{CODE}/orders` + `dayEnds` mein jate hain, to laptop ka "Booker orders (live)" unhein dikhata hai.
+- **Store Manager:** live stock (low/out filter), maal receive (purchase), shop return, company claim, stock count. Yeh entries `clients/{CODE}/inbox` mein jati hain.
+- **Zaroori (ek baar):** naye `firestore.rules` Firebase console → Firestore → Rules mein **Publish** karein (is mein `inbox` ka rule hai). Iske baghair booker orders/Day End chalte hain, lekin recovery/store entries sync nahi hongi (403).
+- **Abhi laptop `inbox` entries (recovery, purchase, return, claim, count) khud import nahi karta** — woh Firestore mein safe hain; laptop mein import screen alag se banani hogi.
+- **APK banana:** GitHub → Actions → **Build Android APK (NexaFlow Field)** → Run workflow → 5-10 min baad Artifacts → `NexaFlow-Field-APK` (`NexaFlow-Field.apk`). Phone mein install karein (Settings mein "Install unknown apps" allow karna hoga).
