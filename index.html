@@ -1006,6 +1006,7 @@ body.has-netbar .top{top:26px}
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <h2 id="pageTitle">Dashboard</h2>
       <span class="chip" id="bizDate">—</span>
+      <span class="chip" id="verChip" hidden title="App version"></span>
       <button class="mode-btn" id="updBtn" type="button" hidden title="Nayi version available">⬆</button>
       <button class="mode-btn" id="reloadBtn" type="button" hidden title="Refresh (F5)" aria-label="Refresh">🔄</button>
       <button class="mode-btn" data-mode-btn type="button">🌙</button>
@@ -1991,6 +1992,7 @@ function syncTitleBar(){
     cx.fillStyle='#ffffff';cx.fillStyle=getComputedStyle(el).backgroundColor;cx.fillRect(0,0,1,1);const [r,g,b]=cx.getImageData(0,0,1,1).data;
     const hex='#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');nexaDesktop.setTitleBar(hex,(r*299+g*587+b*114)/1000<140?'#ffffff':'#222222')}catch(e){}}
 function startApp(){
+  try{const vc=document.getElementById('verChip');if(vc&&window.nexaDesktop&&nexaDesktop.version){vc.textContent='NexaFlow v'+nexaDesktop.version;vc.hidden=false}}catch(e){}
   const rb=document.getElementById('reloadBtn');if(rb&&window.nexaDesktop){rb.hidden=false;rb.onclick=()=>{try{nexaDesktop.reload?nexaDesktop.reload():location.reload()}catch(e){location.reload()}}}
   setTimeout(syncTitleBar,300);Upd.refresh();
   $('#login').style.display='none';$('#app').classList.add('on');applyBranding();
