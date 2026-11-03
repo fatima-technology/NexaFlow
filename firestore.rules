@@ -34,14 +34,15 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Cloud backups (Day End ka poora data): laptop sirf likh sakta hai, parh sirf master sakta hai
+      // Cloud backups (Day End ka poora data): laptop likh sakta hai; naye laptop par restore ke liye
+      // client apne code ke backups parh sakta hai (code lamba random hai, list sirf master kar sakta hai)
       match /backups/{id} {
         allow create: if signedIn();
-        allow read: if master();
+        allow read: if signedIn();
         allow update, delete: if false;
         match /parts/{part} {
           allow create, update: if signedIn();
-          allow read: if master();
+          allow read: if signedIn();
           allow delete: if false;
         }
       }
