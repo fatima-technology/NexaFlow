@@ -1304,7 +1304,12 @@ function firstRunSetup(){
   const dev=need.find(u=>u.role==='developer'),adm=need.find(u=>u.role==='admin');
   modal('First-time setup: choose logins',`<p class="note">No password is stored in the app code. Choose a strong password (at least 8 characters) for each account.</p>
    <div class="grid g2 mt">${dev?F('Developer username',inp('frU1',dev.username,'text','autocapitalize="none" spellcheck="false" autocomplete="off"'))+F('Developer password',inp('frP1','','password','autocomplete="new-password"')):''}
-   ${adm?F('Admin username',inp('frU2',adm.username,'text','autocapitalize="none" spellcheck="false" autocomplete="off"'))+F('Admin password',inp('frP2','','password','autocomplete="new-password"')):''}</div>`,
+   ${adm?F('Admin username',inp('frU2',adm.username,'text','autocapitalize="none" spellcheck="false" autocomplete="off"'))+F('Admin password',inp('frP2','','password','autocomplete="new-password"')):''}</div>
+   <div class="mt" style="border-top:1px solid #8884;padding-top:10px"><b>Naya laptop? Pehle se data hai?</b>
+    <p class="small muted">Naya password banane ki jagah purana data wapas la sakte hain. Purane username / password bhi wapas aa jayenge.</p>
+    <div class="row"><button class="btn" id="frFile">📂 Backup file se restore</button></div>
+    <div class="grid mt">${F('Client code (cloud se restore ke liye)',inp('frCode',FS.code,'text','placeholder="NX-XXXXXXXXXX" autocapitalize="characters" autocomplete="off"'))}</div>
+    <div class="row"><button class="btn" id="frCloud">☁️ Cloud se restore (aakhri Day End backup)</button></div><p class="msg small" id="frMsg"></p></div>`,
    [{t:'Save',pri:1,fn:()=>{
      const set=[[dev,'frU1','frP1'],[adm,'frU2','frP2']].filter(x=>x[0]).map(([u,a,b])=>[u,V(a).toLowerCase().replace(/\s+/g,''),$('#'+b).value]);
      if(set.some(x=>!x[1]))return toast('Enter a username for each account.',true);
@@ -1312,6 +1317,32 @@ function firstRunSetup(){
      if(set.length>1&&set[0][1]===set[1][1])return toast('Usernames must be different.',true);
      set.forEach(([u,un,pw])=>{u.username=un;u.pass=hashPass(un,pw);u.mustChange=false});
      save(true);closeModal();toast('Setup saved. You can sign in now.')}}]);
+  const fm=(t,k)=>{const m=$('#frMsg');if(m){m.textContent=t;m.className='msg small '+(k||'')}};
+  $('#frFile').onclick=()=>pickFile('.json').then(async f=>{if(!f)return;try{const d=JSON.parse(await f.text());setupRestore(d,'backup file')}catch(e){fm(e.message,'err')}});
+  $('#frCloud').onclick=async()=>{const b=$('#frCloud');b.disabled=true;fm('Cloud se backup la raha hai… (thora waqt lag sakta hai)');
+    try{const r=await cloudRestore(V('frCode'));setupRestore(r.d,'cloud backup '+fmtDate(r.b.date))}catch(e){fm(e.message+(e.http===403?' — Rules update / Publish check karein.':''),'err')}finally{b.disabled=false}};
+}
+/* naye laptop par pehli baar: purana data (users + passwords samet) wapas lana */
+function setupRestore(d,src){
+  if(!d||d.meta?.app!=='fatimatech-erp')throw new Error('Yeh is system ki backup file nahi hai.');
+  DB=normalize(d);DB.meta.updated=Date.now();ME=null;save(true);closeModal();applyBranding();
+  toast('Data restore ho gaya ('+src+'). Ab purane username / password se login karein.')}
+async function cloudRestore(code){
+  await Orders.init();const c=FS.cleanCode(code);
+  if(c.length<6)throw new Error('Pehle sahi client code daalein.');
+  if(!FS.hasCfg)throw new Error('Firebase config nahi mila.');
+  const prev=FS.code;FS.code=c;let d,b;
+  try{
+    const r=await withTimeout(OSYNC.TIMEOUT,sg=>FS.req(FS.root()+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'backups'}],limit:100}})},sg));
+    const rows=(r||[]).filter(x=>x.document).map(x=>({...FS.un(x.document),path:x.document.name.split('/documents')[1]})).sort((a,e)=>N(e.createdAtMs)-N(a.createdAtMs));
+    if(!rows.length)throw new Error('Is code par abhi koi cloud backup nahi hai. Backup tab banta hai jab purane laptop par Day End hota hai.');
+    b=rows[0];
+    const pr=await withTimeout(CloudBackup.TIMEOUT,sg=>FS.req(b.path+'/parts?pageSize=300',{method:'GET'},sg));
+    const parts=(pr.documents||[]).map(x=>FS.un(x)).sort((a,e)=>a.n-e.n);
+    if(parts.length!==N(b.parts))throw new Error('Backup ke hisse poore nahi mile. Dobara koshish karein.');
+    d=JSON.parse(await CloudBackup.gunzip(b.enc,parts.map(x=>x.data).join('')));
+  }catch(e){FS.code=prev;throw e}
+  await FS.setCode(c);return{d,b}
 }
 /* ---------- live clock ---------- */
 const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -2421,14 +2452,15 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Cloud backups (Day End ka poora data): laptop sirf likh sakta hai, parh sirf master sakta hai
+      // Cloud backups (Day End ka poora data): laptop likh sakta hai; naye laptop par restore ke liye
+      // client apne code ke backups parh sakta hai (code lamba random hai, list sirf master kar sakta hai)
       match /backups/{id} {
         allow create: if signedIn();
-        allow read: if master();
+        allow read: if signedIn();
         allow update, delete: if false;
         match /parts/{part} {
           allow create, update: if signedIn();
-          allow read: if master();
+          allow read: if signedIn();
           allow delete: if false;
         }
       }
