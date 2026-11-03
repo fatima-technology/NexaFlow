@@ -2528,6 +2528,7 @@ VIEWS.fsSettings=el=>{
   const L=License.st;
   el.innerHTML=`<div class="card"><h3>Client code (is laptop / phone ka)</h3>
     <p class="muted">Har client ko master panel (<b>Clients (master)</b>) se ek alag code milta hai. Yeh code is device par <b>ek baar</b> daalein. Is client ka sara data (orders, Day End, backups) usi code ke neeche alag jata hai, aur expiry / fees bhi isi se control hoti hai.</p>
+    <p class="small muted">App version: <b>${esc((window.nexaDesktop&&nexaDesktop.version)||'browser (Update sirf .exe mein aata hai)')}</b> • Is client ke liye update bheja gaya: <b>${esc(Upd.target()||'koi nahi')}</b>${Upd.available()?' — Update button upar dikhna chahiye':''}</p>
     <p>Abhi: ${FS.code?badge('Code: '+esc(FS.code),'ok'):badge('Code nahi daala — sync band','warn')} ${L?(L.missing?badge('Code cloud par nahi mila','bad'):badge((L.name||'Client')+' • '+License.label(L),License.blocked()?'bad':'ok')):''}</p>
     <div class="grid">${F('Client code',inp('fsCode',FS.code,'text','placeholder="NX-XXXXXXXX" style="text-transform:uppercase"'))}</div>
     <p class="msg small" id="fsCodeMsg"></p>
@@ -2565,7 +2566,7 @@ const License={st:null,_t:null,
   /* true = server se taaza state mili; false = net nahi, purani state chal rahi hai */
   async check(force){
     if(!FS.ok)return false;
-    let ok=false;
+    this._last=Date.now();let ok=false;
     try{
       const d=await withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root(),{method:'GET'},s));const o=FS.un(d);Net.set(true);
       this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),updateTo:String(o.updateTo||''),updateAll:'',checkedAt:Date.now()};ok=true;
@@ -2588,7 +2589,9 @@ const License={st:null,_t:null,
   async start(){
     await Orders.init();await this.load();this.gate();
     const d=this.daysLeft();if(this.st&&!this.blocked()&&d!==null&&d<=7&&d>=0)toast('License '+d+' din mein khatam hogi — fees ada kar dein.',true);
-    this.check();clearInterval(this._t);this._t=setInterval(()=>{if(ME&&!document.hidden)this.check()},30*60*1000)}
+    this.check();clearInterval(this._t);this._t=setInterval(()=>{if(ME&&!document.hidden)this.check()},5*60*1000);
+    /* app wapas samne aaye (ya net wapas aaye) to bhi foran dekho: master ka bheja hua Update jaldi dikhe */
+    if(!this._f){this._f=1;const soon=()=>{if(ME&&Date.now()-(this._last||0)>45000)this.check()};window.addEventListener('focus',soon);window.addEventListener('online',soon);document.addEventListener('visibilitychange',()=>{if(!document.hidden)soon()})}}
 };
 
 /* ---------- UPDATE: master jis client (ya sab) ko version bheje, usi ko "Update" button dikhta hai (sirf .exe mein) ---------- */
@@ -2648,7 +2651,7 @@ VIEWS.clients=el=>{
         try{await save(code,{...c,name,fee:N(V('mcF')),expiryMs:exp,active:V('mcA')==='1',notes:V('mcO'),createdAtMs:c.createdAtMs||Date.now()});closeModal();toast('Client save ho gaya.');load()}catch(e){toast(e.message,true)}}}])};
   if($('#mcNew'))$('#mcNew').onclick=()=>form();
   if($('#mcUall'))$('#mcUall').onclick=()=>{const v=V('mcUv');if(v&&!Upd.valid(v))return toast('Version aise likhein: 1.1.0',true);
-    confirmBox(v?'Sab clients ko v'+v+' ka Update bhejein?':'Sab clients ka update wapas lein?',async()=>{try{await CloudBackup.ownerReq('/config/update',{method:'PATCH',body:FS.doc({version:v,atMs:Date.now()})});toast(v?'Sab ko update bhej diya.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}})};
+    confirmBox(v?'Sab clients ko v'+v+' ka Update bhejein?':'Sab clients ka update wapas lein?',async()=>{try{await CloudBackup.ownerReq('/config/update',{method:'PATCH',body:FS.doc({version:v,atMs:Date.now()})});toast(v?'Sab ko update bhej diya. Clients ko 5 minute mein (ya app dobara kholne par) Update button dikhega.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}})};
   if(CloudBackup.ownerTok)load();
   if($('#mcLogin'))$('#mcLogin').onclick=async()=>{try{msg('Login ho raha hai…');await CloudBackup.ownerLogin(V('mcE'),V('mcP'));MC.err='';render()}catch(e){msg(e.message,'err')}};
 };
