@@ -1,0 +1,43 @@
+name: Release Windows exe
+
+# Nayi version publish karne ke liye: Actions -> "Release Windows exe" -> Run workflow -> version likhein (jaise 1.1.0).
+# Yeh GitHub Release v1.1.0 banata hai (installer + latest.yml). App ke andar master panel se jis client ko chahein
+# (ya sab ko) is version ka "Update" bhej sakte hain.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Nayi version (jaise 1.1.0, pehle wali se bari)'
+        required: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Version check
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then echo "Version aise likhein: 1.1.0"; exit 1; fi
+      - name: Install
+        working-directory: desktop
+        run: npm install
+      - name: Set version
+        working-directory: desktop
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - name: Build and publish release
+        working-directory: desktop
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE_CONFIG }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release

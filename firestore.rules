@@ -19,7 +19,9 @@ service cloud.firestore {
     match /clients/{c} {
       allow get: if signedIn();
       allow list: if master();
-      allow create, update: if master();
+      allow create: if master();
+      // Client apni app ka version aur "aakhri baar dekha" khud likh sakta hai (baqi sab sirf master)
+      allow update: if master() || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appVersion', 'lastSeenMs']));
       allow delete: if false;
 
       // Orders: Day End ho chuki date par koi write nahi (booker ke liye)
@@ -54,6 +56,12 @@ service cloud.firestore {
                       && id == request.resource.data.bookerId + '_' + request.resource.data.date;
         allow update, delete: if false;
       }
+    }
+
+    // App update ka global flag (sab clients ke liye): sab padh sakte hain, likhe sirf master
+    match /config/{id} {
+      allow get: if signedIn();
+      allow list, write: if master();
     }
 
     // Master sab clients ke backups ek saath dekh sake (collection group query)

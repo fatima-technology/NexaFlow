@@ -1,4 +1,4 @@
-// Sirf icons copy karta hai (app khud live site se khulti hai) aur firebase-config.json tayyar karta hai.
+// Web app (index.html, manifest, icons) ko exe ke andar rakhta hai (version exe ke saath band hota hai) aur firebase-config.json tayyar karta hai.
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..', '..');
@@ -6,6 +6,7 @@ const dest = path.join(__dirname, '..', 'app');
 fs.rmSync(dest, { recursive: true, force: true });
 fs.mkdirSync(dest, { recursive: true });
 fs.cpSync(path.join(root, 'icons'), path.join(dest, 'icons'), { recursive: true });
+for (const f of ['index.html', 'manifest.json']) fs.copyFileSync(path.join(root, f), path.join(dest, f));
 
 // Firebase config: pehle FIREBASE_CONFIG (GitHub secret), warna desktop/firebase-config.json, warna khali {}
 const out = path.join(__dirname, '..', 'firebase-config.json');

@@ -1002,6 +1002,7 @@ body.has-netbar .top{top:26px}
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <h2 id="pageTitle">Dashboard</h2>
       <span class="chip" id="bizDate">—</span>
+      <button class="mode-btn" id="updBtn" type="button" hidden style="width:auto;padding:0 12px;font-weight:700;color:#fff;background:#1e7a56;border-color:#1e7a56" title="Nayi version available">⬆️ Update</button>
       <button class="mode-btn" id="reloadBtn" type="button" hidden title="Refresh (F5)" aria-label="Refresh">🔄</button>
       <button class="mode-btn" data-mode-btn type="button">🌙</button>
       <button class="user-btn" id="userBtn"><span class="avatar" id="avatar">A</span><span class="un"><b id="uName">User</b> <small class="muted" id="uRole"></small></span></button>
@@ -1987,7 +1988,7 @@ function syncTitleBar(){
     const hex='#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');nexaDesktop.setTitleBar(hex,(r*299+g*587+b*114)/1000<140?'#ffffff':'#222222')}catch(e){}}
 function startApp(){
   const rb=document.getElementById('reloadBtn');if(rb&&window.nexaDesktop){rb.hidden=false;rb.onclick=()=>{try{nexaDesktop.reload?nexaDesktop.reload():location.reload()}catch(e){location.reload()}}}
-  setTimeout(syncTitleBar,300);
+  setTimeout(syncTitleBar,300);Upd.refresh();
   $('#login').style.display='none';$('#app').classList.add('on');applyBranding();
   $('#avatar').textContent=(ME.name||ME.username)[0].toUpperCase();$('#uName').textContent=ME.name||ME.username;$('#uRole').textContent=ME.role==='developer'?'Developer':ROLES[ME.role]||ME.role;
   $('#uMenuInfo').textContent=(ME.name||ME.username)+' • '+$('#uRole').textContent;
@@ -2467,7 +2468,9 @@ service cloud.firestore {
     match /clients/{c} {
       allow get: if signedIn();
       allow list: if master();
-      allow create, update: if master();
+      allow create: if master();
+      // Client apni app ka version aur "aakhri baar dekha" khud likh sakta hai (baqi sab sirf master)
+      allow update: if master() || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appVersion', 'lastSeenMs']));
       allow delete: if false;
 
       // Orders: Day End ho chuki date par koi write nahi (booker ke liye)
@@ -2502,6 +2505,12 @@ service cloud.firestore {
                       && id == request.resource.data.bookerId + '_' + request.resource.data.date;
         allow update, delete: if false;
       }
+    }
+
+    // App update ka global flag (sab clients ke liye): sab padh sakte hain, likhe sirf master
+    match /config/{id} {
+      allow get: if signedIn();
+      allow list, write: if master();
     }
 
     // Master sab clients ke backups ek saath dekh sake (collection group query)
@@ -2555,13 +2564,15 @@ const License={st:null,_t:null,
     let ok=false;
     try{
       const d=await withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root(),{method:'GET'},s));const o=FS.un(d);Net.set(true);
-      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),checkedAt:Date.now()};ok=true;
+      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),updateTo:String(o.updateTo||''),updateAll:'',checkedAt:Date.now()};ok=true;
+      try{const g=await withTimeout(OSYNC.TIMEOUT,s=>FS.req('/config/update',{method:'GET'},s));this.st.updateAll=String(FS.un(g).version||'')}catch(e){}
+      if(window.nexaDesktop&&nexaDesktop.version)withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root()+'?updateMask.fieldPaths=appVersion&updateMask.fieldPaths=lastSeenMs',{method:'PATCH',body:FS.doc({appVersion:nexaDesktop.version,lastSeenMs:Date.now()})},s)).catch(()=>{});
     }catch(e){
       if(e.http===404){this.st={code:FS.code,missing:true,checkedAt:Date.now()};ok=true}
       else if(e.net)Net.set(false)
     }
     if(ok)await ODB.put('meta',{k:'license',v:this.st}).catch(()=>{});
-    this.gate();return ok},
+    this.gate();Upd.refresh();return ok},
   gate(){
     let el=document.getElementById('licBlock');
     if(!ME||!this.blocked()){if(el)el.remove();return}
@@ -2576,11 +2587,30 @@ const License={st:null,_t:null,
     this.check();clearInterval(this._t);this._t=setInterval(()=>{if(ME&&!document.hidden)this.check()},30*60*1000)}
 };
 
+/* ---------- UPDATE: master jis client (ya sab) ko version bheje, usi ko "Update" button dikhta hai (sirf .exe mein) ---------- */
+const Upd={busy:false,hooked:false,
+  valid:v=>/^\d+\.\d+\.\d+$/.test(String(v||'')),
+  cmp(a,b){const x=String(a).split('.').map(Number),y=String(b).split('.').map(Number);for(let i=0;i<3;i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0},
+  target(){const st=License.st;if(!st)return'';return[st.updateTo,st.updateAll].filter(v=>this.valid(v)).sort((a,b)=>this.cmp(b,a))[0]||''},
+  available(){if(!(window.nexaDesktop&&nexaDesktop.version&&nexaDesktop.update))return'';const t=this.target();return t&&this.cmp(t,nexaDesktop.version)>0?t:''},
+  refresh(){const b=document.getElementById('updBtn');if(!b)return;
+    if(!this.hooked&&window.nexaDesktop&&nexaDesktop.onUpdate){this.hooked=true;nexaDesktop.onUpdate(m=>this.on(m))}
+    const t=this.available();b.hidden=!t||!ME;if(t){b.textContent='⬆️ Update v'+t;b.onclick=()=>confirmBox('Nayi version v'+t+' download hogi, phir app khud band ho kar dobara khulegi. Aap ka data safe rahega. Update karein?',()=>this.run(t))}},
+  run(t){if(this.busy)return;this.busy=true;modal('App update',`<p id="updMsg">Update shuru ho raha hai (v${esc(t)})…</p><div style="height:10px;background:#8883;border-radius:6px;overflow:hidden"><div id="updBar" style="height:100%;width:3%;background:#1e7a56;transition:width .3s"></div></div><p class="small muted">Is dauran app band na karein.</p>`);
+    try{nexaDesktop.update(t)}catch(e){this.on({type:'error',message:e.message})}},
+  on(m){const msg=document.getElementById('updMsg'),bar=document.getElementById('updBar');
+    if(m.type==='progress'){if(msg)msg.textContent='Download ho raha hai… '+(m.percent||0)+'%';if(bar)bar.style.width=Math.max(3,m.percent||0)+'%'}
+    else if(m.type==='downloaded'){if(msg)msg.textContent='Install ho raha hai, app abhi dobara khulegi…';if(bar)bar.style.width='100%'}
+    else if(m.type==='none'){this.busy=false;if(msg)msg.textContent='Aap pehle se is version par hain.'}
+    else if(m.type==='error'){this.busy=false;if(msg)msg.textContent='Update nahi ho saka: '+(m.message||'')+' — internet check karein ya developer se rabta karein.'}}
+};
+
 /* ---------- MASTER: Clients (code, expiry, fees) ---------- */
-const MC={rows:null,err:''};
+const MC={rows:null,err:'',all:''};
 VIEWS.clients=el=>{
   if(!isDev()){el.innerHTML='';return}
   el.innerHTML=`<div class="card"><h3>Clients (master panel)<span class="sp"></span>${CloudBackup.ownerTok?'<button class="btn pri" id="mcNew">➕ Naya client</button>':''}</h3>
+    ${CloudBackup.ownerTok?`<div class="row" style="align-items:end;margin-bottom:10px"><div class="f" style="max-width:240px"><label>Sab clients ke liye update version <span class="muted small">(abhi: <b id="mcAll">—</b>)</span></label><input id="mcUv" placeholder="jaise 1.1.0"></div><button class="btn" id="mcUall">⬆️ Sab ko update bhejein</button></div><p class="small muted">Pehle GitHub → Actions → <b>Release Windows exe</b> mein wohi version release karein. Jis client ko Update bhejenge usi ki app mein "Update" button dikhega. Sirf ek client ke liye us ki row mein <b>⬆️ Update</b> dabayein.</p>`:''}
     <p class="muted">Har client ka code, expiry aur fees yahan se control hoti hai. Sab clients ek hi Firebase project mein hain; har ka data apne code ke neeche alag. Master <b>email/password</b> (Firebase Authentication ka) session ke liye use hota hai, save nahi hota.</p>
     ${CloudBackup.ownerTok?'':`<div class="grid">${F('Master email',inp('mcE','','email'))}${F('Password',inp('mcP','','password'))}</div><div class="row mt"><button class="btn pri" id="mcLogin">🔓 Master login</button></div>`}
     <p class="msg small" id="mcMsg">${esc(MC.err)}</p><div class="mt" id="mcOut"></div></div>`;
@@ -2588,18 +2618,21 @@ VIEWS.clients=el=>{
   const dstr=ms=>ms>0?new Date(ms).toISOString().slice(0,10):'';
   const save=async(code,o)=>{o={...o};delete o.code;await CloudBackup.ownerReq('/clients/'+encodeURIComponent(code),{method:'PATCH',body:FS.doc(o)})};
   const load=async()=>{msg('Clients la raha hai…');try{
+      try{const g=await CloudBackup.ownerReq('/config/update');MC.all=String(FS.un(g).version||'')}catch(e){MC.all=''}
+      const ma=$('#mcAll');if(ma)ma.textContent=MC.all?'v'+MC.all:'koi nahi';
       const r=await CloudBackup.ownerReq('/clients?pageSize=300');MC.rows=(r.documents||[]).map(d=>({...FS.un(d),code:d.name.split('/').pop()})).sort((a,b)=>String(a.name).localeCompare(String(b.name)));MC.err='';msg(MC.rows.length?'':'Abhi koi client nahi — "Naya client" dabayein.');draw()}
     catch(e){CloudBackup.ownerTok=null;MC.err=e.message+(e.http===403?' — Rules update karke Publish karein (master email sahi daalein).':'');render()}};
   const extend=(c,months)=>{const base=Math.max(Date.now(),N(c.expiryMs));const d=new Date(base);d.setMonth(d.getMonth()+months);
     return{...c,expiryMs:d.getTime(),lastPaidMs:Date.now(),paidTotal:N(c.paidTotal)+N(c.fee)*months,active:true}};
   const draw=()=>{const o=$('#mcOut');if(!o||!MC.rows)return;
-    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:''}],MC.rows.map((c,i)=>{
+    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:'App version'},{t:''}],MC.rows.map((c,i)=>{
       const d=c.expiryMs>0?Math.ceil((c.expiryMs-Date.now())/864e5):null;
       const stt=c.active===false?badge('Band','bad'):d!==null&&d<0?badge('Expire','bad'):d!==null&&d<=7?badge(d+' din baqi','warn'):badge('Chalu','ok');
-      return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',
-        `<button class="btn sm" data-ed="${i}">Edit</button> <button class="btn sm" data-m1="${i}">💰 +1 mahina</button> <button class="btn sm" data-m12="${i}">+1 saal</button> <button class="btn sm" data-cp="${i}">📋 Code</button>`]}));
+      return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',(c.appVersion?'v'+esc(c.appVersion):'—')+(c.updateTo?' <span class="muted small">→ v'+esc(c.updateTo)+'</span>':'')+(c.lastSeenMs?'<div class="muted small">'+new Date(N(c.lastSeenMs)).toLocaleDateString()+'</div>':''),
+        `<button class="btn sm" data-up="${i}">⬆️ Update</button> <button class="btn sm" data-ed="${i}">Edit</button> <button class="btn sm" data-m1="${i}">💰 +1 mahina</button> <button class="btn sm" data-m12="${i}">+1 saal</button> <button class="btn sm" data-cp="${i}">📋 Code</button>`]}));
     const bind=(attr,fn)=>$$('#mcOut ['+attr+']').forEach(x=>x.onclick=()=>fn(MC.rows[+x.getAttribute(attr)]));
     bind('data-ed',c=>form(c));
+    bind('data-up',c=>modal('Update bhejein: '+c.name,`<div class="grid">${F('Version (khali = update wapas lein)',inp('mcUp',c.updateTo||MC.all||'','text','placeholder="jaise 1.1.0"'))}</div><p class="small muted">Sirf is client ki app mein Update button aayega. Version pehle GitHub par release hona chahiye.</p>`,[{t:'Bhejein',pri:1,fn:async()=>{const v=V('mcUp');if(v&&!Upd.valid(v))return toast('Version aise likhein: 1.1.0',true);try{await save(c.code,{...c,updateTo:v});closeModal();toast(v?'Update bhej diya.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}}}]));
     const pay=(c,m)=>confirmBox(c.name+': '+m+' mahine ki fees mil gayi? Expiry aage barh jayegi.',async()=>{try{await save(c.code,extend(c,m));toast('Expiry barh gayi.');load()}catch(e){toast(e.message,true)}});
     bind('data-m1',c=>pay(c,1));bind('data-m12',c=>pay(c,12));
     bind('data-cp',c=>{try{navigator.clipboard.writeText(c.code);toast('Code copy ho gaya: '+c.code)}catch(e){toast(c.code)}})};
@@ -2610,6 +2643,8 @@ VIEWS.clients=el=>{
         const x=V('mcX');const exp=x?new Date(x+'T23:59:59').getTime():0;
         try{await save(code,{...c,name,fee:N(V('mcF')),expiryMs:exp,active:V('mcA')==='1',notes:V('mcO'),createdAtMs:c.createdAtMs||Date.now()});closeModal();toast('Client save ho gaya.');load()}catch(e){toast(e.message,true)}}}])};
   if($('#mcNew'))$('#mcNew').onclick=()=>form();
+  if($('#mcUall'))$('#mcUall').onclick=()=>{const v=V('mcUv');if(v&&!Upd.valid(v))return toast('Version aise likhein: 1.1.0',true);
+    confirmBox(v?'Sab clients ko v'+v+' ka Update bhejein?':'Sab clients ka update wapas lein?',async()=>{try{await CloudBackup.ownerReq('/config/update',{method:'PATCH',body:FS.doc({version:v,atMs:Date.now()})});toast(v?'Sab ko update bhej diya.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}})};
   if(CloudBackup.ownerTok)load();
   if($('#mcLogin'))$('#mcLogin').onclick=async()=>{try{msg('Login ho raha hai…');await CloudBackup.ownerLogin(V('mcE'),V('mcP'));MC.err='';render()}catch(e){msg(e.message,'err')}};
 };
