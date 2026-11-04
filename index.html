@@ -2809,7 +2809,7 @@ setTimeout(()=>Upd.watch(),3000);
 const MC={rows:null,err:'',all:''};
 VIEWS.clients=el=>{
   if(!isDev()){el.innerHTML='';return}
-  el.innerHTML=`<div class="card"><h3>Clients (master panel)<span class="sp"></span>${CloudBackup.ownerTok?'<button class="btn pri" id="mcNew">➕ Naya client</button>':''}</h3>
+  el.innerHTML=`<div class="card"><h3>Clients (master panel)<span class="sp"></span>${CloudBackup.ownerTok?'<button class="btn" id="mcRef" title="Clients ki taaza halat (installed version, status) dobara load karein">🔄 Refresh</button> <button class="btn pri" id="mcNew">➕ Naya client</button>':''}</h3>
     ${CloudBackup.ownerTok?`<div class="row" style="align-items:end;margin-bottom:10px"><div class="f" style="max-width:240px"><label>Sab clients ke liye update version <span class="muted small">(abhi: <b id="mcAll">—</b>)</span></label><input id="mcUv" placeholder="jaise 1.1.0"></div><button class="btn" id="mcUall">⬆️ Sab ko update bhejein</button></div><p class="small muted">Pehle GitHub → Actions → <b>Release Windows exe</b> mein wohi version release karein. Jis client ko Update bhejenge usi ki app mein "Update" button dikhega. Sirf ek client ke liye us ki row mein <b>⬆️ Update</b> dabayein.<br><b>Update mode:</b> <b>Auto</b> = GitHub par nayi version aate hi client ki app khud update ho jati hai (mobile bhi). <b>Manual (hold)</b> = sirf wohi version lagti hai jo aap is client ko ⬆️ Update se bhejein; "Sab ko update" aur khud-update us par nahi lagte, aur us ke phones par naya mobile code bhi ruka rehta hai.</p>`:''}
     <p class="muted">Har client ka code, expiry aur fees yahan se control hoti hai. Sab clients ek hi Firebase project mein hain; har ka data apne code ke neeche alag. Master <b>email/password</b> (Firebase Authentication ka) session ke liye use hota hai, save nahi hota.</p>
     ${CloudBackup.ownerTok?'':`<div class="grid">${F('Master email',inp('mcE','','email'))}${F('Password',inp('mcP','','password'))}</div><div class="row mt"><button class="btn pri" id="mcLogin">🔓 Master login</button></div>`}
@@ -2822,14 +2822,22 @@ VIEWS.clients=el=>{
       const ma=$('#mcAll');if(ma)ma.textContent=MC.all?'v'+MC.all:'koi nahi';
       const r=await CloudBackup.ownerReq('/clients?pageSize=300');MC.rows=(r.documents||[]).map(d=>({...FS.un(d),code:d.name.split('/').pop()})).sort((a,b)=>String(a.name).localeCompare(String(b.name)));MC.err='';msg(MC.rows.length?'':'Abhi koi client nahi — "Naya client" dabayein.');draw()}
     catch(e){CloudBackup.ownerTok=null;MC.err=e.message+(e.http===403?' — Rules update karke Publish karein (master email sahi daalein).':'');render()}};
+  /* Installed (client ki app ne khud bataya) aur Bheja gaya (master ne ⬆ Update se bheja) alag alag dikhao */
+  const verCell=c=>{
+    const inst=Upd.valid(c.appVersion)?String(c.appVersion):'',sent=Upd.valid(c.updateTo)?String(c.updateTo):'';
+    const done=sent&&inst&&Upd.cmp(inst,sent)>=0;
+    const seen=c.lastSeenMs>0?new Date(N(c.lastSeenMs)).toLocaleString([],{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    return`<div><b>${inst?'v'+esc(inst):'pata nahi'}</b> <span class="muted small">installed</span></div>`+
+      (sent?`<div class="small ${done?'':'muted'}">Bheja gaya: v${esc(sent)}${done?' ✓ lag chuka':inst?' — abhi nahi lagi':''}</div>`:'')+
+      (seen?`<div class="muted small">Aakhri baar: ${esc(seen)}</div>`:'')};
   const extend=(c,months)=>{const base=Math.max(Date.now(),N(c.expiryMs));const d=new Date(base);d.setMonth(d.getMonth()+months);
     return{...c,expiryMs:d.getTime(),lastPaidMs:Date.now(),paidTotal:N(c.paidTotal)+N(c.fee)*months,active:true}};
   const draw=()=>{const o=$('#mcOut');if(!o||!MC.rows)return;
-    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:'App version'},{t:'Update mode'},{t:''}],MC.rows.map((c,i)=>{
+    o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:'Version'},{t:'Update mode'},{t:''}],MC.rows.map((c,i)=>{
       const d=c.expiryMs>0?Math.ceil((c.expiryMs-Date.now())/864e5):null;
       const stt=c.active===false?badge('Band','bad'):d!==null&&d<0?badge('Expire','bad'):d!==null&&d<=7?badge(d+' din baqi','warn'):badge('Chalu','ok');
-      return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',(c.appVersion?'v'+esc(c.appVersion):'—')+(c.updateTo?' <span class="muted small">→ v'+esc(c.updateTo)+'</span>':'')+(c.lastSeenMs?'<div class="muted small">'+new Date(N(c.lastSeenMs)).toLocaleDateString()+'</div>':''),
-        `<select data-um="${i}" title="Auto: nayi version khud lagti hai. Manual: sirf wohi jo aap bhejein; mobile par naya code ruk jata hai.">${opt([{v:'auto',t:'Auto'},{v:'manual',t:'Manual'}],c.updateMode==='manual'?'manual':'auto')}</select>`,
+      return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',verCell(c),
+        `<select data-um="${i}" style="min-width:96px" title="Auto: nayi version khud lagti hai. Manual: sirf wohi jo aap bhejein; mobile par naya code ruk jata hai.">${opt([{v:'auto',t:'Auto'},{v:'manual',t:'Manual'}],c.updateMode==='manual'?'manual':'auto')}</select>`,
         `<button class="btn sm" data-up="${i}">⬆️ Update</button> <button class="btn sm" data-ed="${i}">Edit</button> <button class="btn sm" data-m1="${i}">💰 +1 mahina</button> <button class="btn sm" data-m12="${i}">+1 saal</button> <button class="btn sm" data-cp="${i}">📋 Code</button>`]}));
     const bind=(attr,fn)=>$$('#mcOut ['+attr+']').forEach(x=>x.onclick=()=>fn(MC.rows[+x.getAttribute(attr)]));
     bind('data-ed',c=>form(c));
@@ -2848,6 +2856,9 @@ VIEWS.clients=el=>{
   if($('#mcNew'))$('#mcNew').onclick=()=>form();
   if($('#mcUall'))$('#mcUall').onclick=()=>{const v=V('mcUv');if(v&&!Upd.valid(v))return toast('Version aise likhein: 1.1.0',true);
     confirmBox(v?'Sab clients ko v'+v+' ka Update bhejein?':'Sab clients ka update wapas lein?',async()=>{try{await CloudBackup.ownerReq('/config/update',{method:'PATCH',body:FS.doc({version:v,atMs:Date.now()})});toast(v?'Sab ko update bhej diya. Clients ko 5 minute mein (ya app dobara kholne par) Update button dikhega.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}})};
+  if($('#mcRef'))$('#mcRef').onclick=async()=>{const b=$('#mcRef');b.disabled=true;await load();b.disabled=false;toast('Clients refresh ho gaye.')};
+  clearInterval(MC._t);
+  if(CloudBackup.ownerTok)MC._t=setInterval(()=>{if(CUR!=='clients'||document.hidden)return;const a=document.activeElement;if(a&&(a.tagName==='SELECT'||a.tagName==='INPUT'))return;if($('#modalBg').classList.contains('on'))return;load()},60000);
   if(CloudBackup.ownerTok)load();
   if($('#mcLogin'))$('#mcLogin').onclick=async()=>{try{msg('Login ho raha hai…');await CloudBackup.ownerLogin(V('mcE'),V('mcP'));MC.err='';render()}catch(e){msg(e.message,'err')}};
 };
