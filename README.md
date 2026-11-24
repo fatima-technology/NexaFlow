@@ -61,6 +61,12 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Backup:** Day End / Backup file mein saari companies ek saath jati hain; restore par saari wapas aati hain. Booker orders (cloud) company ke tag ke saath jate hain; Booker Day End lock booker + date par hota hai (company-wise nahi).
 - Android APK (Field) abhi sirf pehli (main) company ke saath chalti hai.
 
+## Naye device par login (developer ke baghair)
+- Naye laptop par .exe kholne par (ya pehla login try karne par) window aati hai: **Client code + username + password**. App cloud ke aakhri Day End backup se password ka *hash* check karti hai (plain password kahin save nahi hota). Theek ho to data aur users khud wapas aate hain aur login ho jata hai. Developer / admin password nahi poochha jata.
+- Admin apna Client code **Backup & day end** screen par dekh sakta hai. Client ko bas code + username + password dena hai.
+- Shart: us client ka kam az kam ek cloud backup (Day End) bana hona chahiye, aur naye users / password ki tabdeeli aakhri Day End backup tak cloud mein pahunchti hai.
+- Bilkul naye client (jis ka backup nahi) ke liye window mein "Developer / bilkul naya setup" ka button hai, ya developer logo (5 click) se login.
+
 ## NexaFlow Field — Android app (Order Booker + Store Manager)
 Alag APK (`mobile/` folder, Capacitor). **Laptop / Windows app mein koi tabdeeli nahi hui** — woh pehle jaisi chalti hai.
 - **Login:** ek hi app; username/password se role ke hisaab se screens khulti hain (laptop par jo Booker / Store Manager users banaye hain wahi).
