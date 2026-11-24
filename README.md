@@ -52,6 +52,15 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Pehli baar (ek hi martaba):** nayi `.exe` manually install karni hai (Actions → Release Windows exe se banne wale Release se `NexaFlow Setup x.y.z.exe`). Ye app ka local data alag jagah rakhta hai, isliye purane exe ka data **backup file** (Backup & day end) ya **Cloud restore** (pehli screen) se wapas laayein. Uske baad kabhi dobara install nahi karna, sirf Update button.
 - Browser mein (developer) website hamesha live version dikhati hai.
 
+## Multi-company (ek client, 3-4 companies) + Master sheet
+- **On kaise karein:** Developer login → Clients (master) → us client ki row **Edit** → "Multi-company" = **Haan** → Save. Baqi clients par kuch nahi badalta. Client ka app agli license check par (ya dobara kholne par) feature on kar leta hai.
+- Har company ka **apna alag data** hota hai: products/stock, shops, sales, purchases, expenses, investment, profit, invoice numbers, naam/logo/print format. Pehli company wohi purana data hai (kuch nahi mitta).
+- Header mein 🏢 box se company badalte hain. Menu **Companies** (Admin/Developer) se nayi company banti hai.
+- **Users:** Users & access mein har user (booker, delivery boy / supply man, store manager, KPO...) ke liye "Company access": **Sab companies (same user)** ya sirf chuni hui companies. Admin ke ikhtiyar mein. Login ek hi hota hai; user ko sirf apni companies nazar aati hain.
+- **Master sheet (Reports → Master sheet):** muddat chun kar sab companies ek jagah: sales value aur %, investment (COGS), gross profit, margin, expenses, net profit, purchases, stock value, total, graph, Print / Excel / PDF.
+- **Backup:** Day End / Backup file mein saari companies ek saath jati hain; restore par saari wapas aati hain. Booker orders (cloud) company ke tag ke saath jate hain; Booker Day End lock booker + date par hota hai (company-wise nahi).
+- Android APK (Field) abhi sirf pehli (main) company ke saath chalti hai.
+
 ## NexaFlow Field — Android app (Order Booker + Store Manager)
 Alag APK (`mobile/` folder, Capacitor). **Laptop / Windows app mein koi tabdeeli nahi hui** — woh pehle jaisi chalti hai.
 - **Login:** ek hi app; username/password se role ke hisaab se screens khulti hain (laptop par jo Booker / Store Manager users banaye hain wahi).
