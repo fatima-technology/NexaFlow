@@ -1107,6 +1107,7 @@ const MODULES=[
   {id:'suppliers',label:'Supplier dues',icon:'📒',group:'Purchase & stock'},
   {id:'products',label:'Products & stock',icon:'📦',group:'Purchase & stock'},
   {id:'collection',label:'Supply man collection',icon:'💵',group:'Recovery'},
+  {id:'smhisab',label:'Supply man hisab',icon:'🧮',group:'Recovery'},
   {id:'recovery',label:'Market recovery',icon:'💰',group:'Recovery'},
   {id:'shops',label:'Shops & routes',icon:'🏪',group:'Customers'},
   {id:'expenses',label:'Expenses',icon:'💸',group:'Accounts'},
@@ -1134,7 +1135,7 @@ const ROLE_DEFAULTS={
   admin:MODULES.filter(m=>!m.devOnly).map(m=>m.id),
   booker:['dashboard','pos','orderSync','invoices','recovery','shops','bookerReports','help'],
   storemanager:['dashboard','products','purchases','suppliers','returns','claims','storeReports','help'],
-  kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','recovery','shops','expenses','help'],
+  kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','smhisab','recovery','shops','expenses','help'],
   supplyman:[],
   staff:[]
 };
@@ -1278,6 +1279,7 @@ function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
   if(mid==='companies'||mid==='masterSheet')return CO.on&&isAdmin();
+  if(mid==='smhisab')return isAdmin()||ME.role==='kpo'||!!(ME.perms&&ME.perms.includes(mid));
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
   if(mid==='storeReports')return ME.role==='storemanager'||isDev();
@@ -3131,7 +3133,7 @@ VIEWS.returns=el=>{
   const shops=visibleShops();const prodOpt=DB.products.filter(isOn).map(p=>({v:p.id,t:p.name}));
   el.innerHTML=`<div class="tabs"><button class="on" data-rt="item">Item return</button><button data-rt="udhaar">Credit stock return</button><button data-rt="cancel">Full invoice cancel</button></div>
   <div class="card" id="rtForm"></div>
-  <div class="card"><h3>Returns record</h3>${table([{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'},{t:'Reason'},{t:''}],DB.returns.slice().reverse().slice(0,300).map(r=>[fmtDate(r.date),r.kind==='udhaar'?'Credit return':'Item return',esc(r.shopName),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash refund':'Balance minus',r.toStock?badge('In stock','ok'):badge('Damaged','warn'),esc(r.reason||''),`<button class="btn sm" data-prt="${r.id}">🖨️</button>${isAdmin()?` <button class="btn sm bad" data-drt="${r.id}">🗑️</button>`:''}`]))}</div>`;
+  <div class="card"><h3>Returns record</h3>${table([{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Supply man'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'},{t:'Reason'},{t:''}],DB.returns.slice().reverse().slice(0,300).map(r=>[fmtDate(r.date),r.kind==='udhaar'?'Credit return':'Item return',esc(r.shopName),esc(r.supplyman||''),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash refund':'Balance minus',r.toStock?badge('In stock','ok'):badge('Damaged','warn'),esc(r.reason||''),`<button class="btn sm" data-prt="${r.id}">🖨️</button>${isAdmin()?` <button class="btn sm bad" data-drt="${r.id}">🗑️</button>`:''}`]))}</div>`;
   const form=k=>{$$('[data-rt]').forEach(b=>b.classList.toggle('on',b.dataset.rt===k));const f=$('#rtForm');
     if(k==='cancel'){f.innerHTML=`<h3>Full invoice cancel / return</h3><div class="grid">${F('Invoice',sel('rcInv',activeInv().slice().reverse().slice(0,500).map(i=>({v:i.id,t:i.no+' — '+i.shopName+' — '+fmt(i.net)})),'','Select'),'wide')}${F('Reason',inp('rcWhy'),'wide')}</div><p class="note mt">Cancelling returns all goods to stock and reduces the shop balance. The record is kept safe.</p><div class="row mt"><button class="btn pri bad" id="rcGo">Cancel invoice</button></div>`;
       $('#rcGo').onclick=()=>{const iv=byId('invoices',V('rcInv'));if(!iv)return toast('Select an invoice.',true);if(!V('rcWhy'))return toast('Enter a reason.',true);if(!guardEdit(iv.date))return;if(invCollected(iv.id)>0&&!confirm('The supply man has already collected cash on this invoice; that record will stay. Cancel the invoice?'))return;
@@ -3142,11 +3144,12 @@ VIEWS.returns=el=>{
       ${k==='item'?F('Settle',sel('rSettle',[{v:'credit',t:'Minus from shop balance'},{v:'cash',t:'Cash refunded'}],'credit')):''}
       ${k==='item'?F('Cash account',sel('rAcc',accOptions(),'acc_cash')):''}
       ${F('Goods condition',sel('rCond',[{v:'1',t:'Good — back to stock'},{v:'0',t:'Damaged / expiry — not to stock'}],'1'))}
+      ${F('Supply man (jis ke saath maal wapas aaya)',sel('rSM',usersByRole('supplyman').map(u=>({v:u.id,t:u.name||u.username})),'','— koi nahi —'))}
       ${F('Reason',inp('rWhy'),'wide')}</div><div class="prod-hint" id="rInfo"></div><div class="row mt"><button class="btn pri" id="rGo">Save return</button></div>`;
     const info=()=>{const sh=byId('shops',V('rShop')),p=byId('products',V('rProd'));if(p&&!V('rRate'))$('#rRate').value=p.tradePc||'';$('#rInfo').innerHTML=(sh?'Shop balance: <b>'+money(shopDue(sh.id))+'</b> ':'')+(p&&N(V('rPcs'))?' • Amount: <b>'+money(N(V('rPcs'))*N(V('rRate')))+'</b>':'')};
     ['rShop','rProd','rPcs','rRate'].forEach(i=>$('#'+i).oninput=info);
     $('#rGo').onclick=()=>{const sh=byId('shops',V('rShop')),p=byId('products',V('rProd'));if(!sh||!p)return toast('Select a shop and a product.',true);const pcs=N(V('rPcs'));if(pcs<=0)return toast('Enter pieces.',true);if(!V('rWhy'))return toast('Enter a reason.',true);if(!guard(V('rDate')))return;
-      const r={id:uid(),kind:k,date:V('rDate'),shopId:sh.id,shopName:sh.name,productId:p.id,productName:p.name,pcs,rate:N(V('rRate')),amount:r2(pcs*N(V('rRate'))),settle:k==='udhaar'?'credit':V('rSettle'),accountId:V('rAcc')||'acc_cash',toStock:V('rCond')==='1',reason:V('rWhy'),by:ME.username};
+      const r={id:uid(),kind:k,date:V('rDate'),shopId:sh.id,shopName:sh.name,productId:p.id,productName:p.name,pcs,rate:N(V('rRate')),amount:r2(pcs*N(V('rRate'))),settle:k==='udhaar'?'credit':V('rSettle'),accountId:V('rAcc')||'acc_cash',toStock:V('rCond')==='1',reason:V('rWhy'),by:ME.username,...(()=>{const u=byId('users',V('rSM'));return u?{smId:u.id,supplyman:u.name||u.username}:{}})()};
       DB.returns.push(r);log('Returns',k==='udhaar'?'Credit stock return':'Item return',sh.name,p.name+' '+pcs+' pcs');save();toast('Return saved.');render()};
   };
   $$('[data-rt]').forEach(b=>b.onclick=()=>form(b.dataset.rt));form('item');
@@ -3154,6 +3157,56 @@ VIEWS.returns=el=>{
   $$('[data-drt]').forEach(b=>b.onclick=()=>guardEdit((byId('returns',b.dataset.drt)||{}).date)&&confirmBox('Delete this return record?',()=>{DB.returns=DB.returns.filter(r=>r.id!==b.dataset.drt);log('Returns','Return deleted',b.dataset.drt);save();render()}));
 };
 
+/* =====================================================================
+   SUPPLY MAN HISAB — supply man print le kar jata hai, wapas aa kar hisab deta hai, admin yahan data darj karta hai.
+   Supply man ko app / login ki zaroorat nahi.
+   ===================================================================== */
+const SH={sm:'',date:'',cdate:''};
+VIEWS.smhisab=el=>{
+  const sms=usersByRole('supplyman');if(!SH.date)SH.date=today();if(!SH.cdate)SH.cdate=today();
+  el.innerHTML=`<div class="card"><h3>Supply man hisab (wapsi par)<span class="sp"></span><button class="btn sm" id="shPrint">🖨️ Print</button></h3>
+   <p class="muted small">Supply man print le kar jata hai aur wapas aa kar hisab deta hai. Yahan us ki bills, wasool hui cash aur wapas aaya maal darj karein. Us ko app ya login nahi chahiye. Supply man Users &amp; access mein "Supply man (no login)" role se banta hai.</p>
+   <div class="grid">${F('Supply man',sel('shSM',sms.map(u=>({v:u.id,t:u.name||u.username})),SH.sm,'Select'))}${F('Bills ki delivery date',inp('shD',SH.date,'date'))}${F('Hisab / cash ki date',inp('shC',SH.cdate,'date'))}</div></div><div id="shOut"></div>`;
+  let pr=null;
+  const draw=()=>{SH.sm=V('shSM');SH.date=V('shD');SH.cdate=V('shC');const o=$('#shOut');pr=null;
+    if(!SH.sm){o.innerHTML='<div class="card"><div class="empty">Pehle supply man chunein.</div></div>';return}
+    const sm=byId('users',SH.sm);const inv=activeInv().filter(i=>i.supplymanId===SH.sm&&i.deliveryDate===SH.date);
+    const cashB=sum(inv.filter(i=>i.payType==='cash'),i=>i.net),credB=sum(inv.filter(i=>i.payType!=='cash'),i=>i.net);
+    const col=DB.collections.filter(c=>c.smId===SH.sm&&c.date===SH.cdate),colT=sum(col,c=>c.amount);
+    const rets=DB.returns.filter(r=>r.smId===SH.sm&&r.date===SH.cdate),retT=sum(rets,r=>r.amount),refund=sum(rets.filter(r=>r.settle==='cash'),r=>r.amount);
+    const expect=cashB+colT-refund;
+    const shopIds=[...new Set(inv.map(i=>i.shopId))];const shopsL=shopIds.map(id=>byId('shops',id)).filter(Boolean);
+    const prodOpt=DB.products.filter(isOn).map(x=>({v:x.id,t:x.name}));
+    const rowsTbl=inv.map(i=>{const due=invDue(i);const credit=i.payType!=='cash';
+      return[esc(i.no),esc(i.shopName),credit?'Udhaar':'Cash',fmt(i.net),fmt(invCollected(i.id)),credit?fmt(due):'—',credit&&due>0?`<input data-sc="${i.id}" type="number" step="0.01" inputmode="decimal" value="${due}" style="width:110px">`:(credit?badge('Wasool ✓','ok'):'')]});
+    o.innerHTML=`<div class="kpis"><div class="kpi"><small>Bills</small><b>${inv.length}</b></div><div class="kpi"><small>Kul bill value</small><b>${money(cashB+credB)}</b></div><div class="kpi"><small>Cash bills</small><b>${money(cashB)}</b></div><div class="kpi"><small>Udhaar bills</small><b>${money(credB)}</b></div><div class="kpi"><small>Udhaar se wasool (is date)</small><b>${money(colT)}</b></div><div class="kpi"><small>Wapas aaya maal</small><b>${money(retT)}</b></div><div class="kpi"><small>Supply man se cash milni chahiye</small><b>${money(expect)}</b></div></div>
+    <div class="card"><h3>Bills (${esc(sm?sm.name||sm.username:'')} — ${fmtDate(SH.date)})</h3>${inv.length?table([{t:'Inv #'},{t:'Shop'},{t:'Type'},{t:'Bill',n:1},{t:'Wasool',n:1},{t:'Baqi',n:1},{t:'Cash mili'}],rowsTbl):'<div class="empty">Is date par is supply man ko koi bill assign nahi. Picklist ya invoice mein supply man chunein.</div>'}
+     ${inv.some(i=>i.payType!=='cash'&&invDue(i)>0)?'<div class="row end mt"><button class="btn pri" id="shSave">💾 Cash save karein</button></div><p class="small muted">Jitni cash supply man ne di wo likhein (khali ya 0 chorein to save nahi hogi). Baqi udhaar shop ke hisab mein rehta hai.</p>':''}</div>
+    <div class="card"><h3>Wapas aaya maal (returns) — ${fmtDate(SH.cdate)}</h3>${rets.length?table([{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'}],rets.map(r=>[esc(r.shopName),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash wapas':'Balance se minus',r.toStock?'Stock mein':'Kharab'])):'<div class="empty">Abhi koi return darj nahi.</div>'}
+     <h4 class="mt">Naya return darj karein</h4><div class="grid">${F('Shop',sel('shRS',(shopsL.length?shopsL:visibleShops()).map(x=>({v:x.id,t:shopLabel(x)})),'','Select'),'full-m')}${F('Product',sel('shRP',prodOpt,'','Select'),'full-m')}${F('Pieces',inp('shRQ','','number'))}${F('Rate / pc',inp('shRR','','number','step="0.01"'))}
+      ${F('Settle',sel('shRT',[{v:'credit',t:'Shop ke balance se minus'},{v:'cash',t:'Cash wapas'}],'credit'))}${F('Maal ki halat',sel('shRC',[{v:'1',t:'Theek — stock mein wapas'},{v:'0',t:'Kharab / expiry'}],'1'))}</div>
+     <div class="row mt"><button class="btn" id="shRet">+ Return save karein</button></div></div>`;
+    const sh=$('#shSave');
+    if(sh)sh.onclick=()=>{if(!guard(SH.cdate))return;let n=0,tot=0;const bad=[];
+      $$('#shOut [data-sc]').forEach(inpEl=>{const a=N(inpEl.value);if(!(a>0))return;const iv=byId('invoices',inpEl.dataset.sc);if(!iv)return;
+        if(a>invDue(iv)+0.01){bad.push(iv.no);return}
+        DB.collections.push({id:uid(),date:SH.cdate,invoiceId:iv.id,invoiceNo:iv.no,shopId:iv.shopId,shopName:iv.shopName,smId:SH.sm,supplyman:sm?sm.name||sm.username:'',bill:invDue(iv),amount:a,accountId:'acc_cash',remarks:'Supply man hisab',by:ME.username});
+        iv.deliveredAt=nowStamp();n++;tot+=a;clearCache()});
+      if(bad.length)return toast('Ye bills ki cash baqi se zyada hai: '+bad.join(', '),true);
+      if(!n)return toast('Koi cash nahi likhi.',true);
+      log('Recovery','Supply man hisab',sm?sm.name||sm.username:'',n+' bills '+money(tot));save();toast(n+' bills ki cash ('+money(tot)+') save ho gayi.');render()};
+    const pI=()=>{const x=byId('products',V('shRP'));if(x&&!V('shRR'))$('#shRR').value=x.tradePc||''};$('#shRP').onchange=pI;
+    $('#shRet').onclick=()=>{const shp=byId('shops',V('shRS')),pd=byId('products',V('shRP')),q=N(V('shRQ'));
+      if(!shp||!pd)return toast('Shop aur product chunein.',true);if(q<=0)return toast('Pieces likhein.',true);if(!guard(SH.cdate))return;
+      DB.returns.push({id:uid(),kind:'item',date:SH.cdate,shopId:shp.id,shopName:shp.name,productId:pd.id,productName:pd.name,pcs:q,rate:N(V('shRR'))||N(pd.tradePc),amount:r2(q*(N(V('shRR'))||N(pd.tradePc))),settle:V('shRT'),accountId:'acc_cash',toStock:V('shRC')==='1',reason:'Delivery par wapas ('+(sm?sm.name||sm.username:'')+')',by:ME.username,smId:SH.sm,supplyman:sm?sm.name||sm.username:''});
+      clearCache();log('Returns','Supply man return',shp.name,pd.name+' '+q+' pcs');save();toast('Return darj ho gaya.');render()};
+    pr={title:'Supply man hisab: '+(sm?sm.name||sm.username:''),sub:'Delivery '+fmtDate(SH.date)+' • Hisab '+fmtDate(SH.cdate),
+      body:`<table class="kv"><tr><td>Kul bill value</td><td>${money(cashB+credB)}</td></tr><tr><td>Cash bills</td><td>${money(cashB)}</td></tr><tr><td>Udhaar bills</td><td>${money(credB)}</td></tr><tr><td>Udhaar se wasool</td><td>${money(colT)}</td></tr><tr><td>Wapas aaya maal</td><td>${money(retT)}</td></tr><tr><td><b>Supply man se cash milni chahiye</b></td><td><b>${money(expect)}</b></td></tr></table>`+tableHTMLPrint([{t:'Inv #'},{t:'Shop'},{t:'Type'},{t:'Bill',n:1},{t:'Wasool',n:1},{t:'Baqi',n:1}],inv.map(i=>[i.no,i.shopName,i.payType==='cash'?'Cash':'Udhaar',fmt(i.net),fmt(invCollected(i.id)),i.payType==='cash'?'—':fmt(invDue(i))]))};
+  };
+  $('#shSM').onchange=draw;$('#shD').oninput=draw;$('#shC').oninput=draw;
+  $('#shPrint').onclick=()=>{if(!pr)return toast('Pehle supply man chunein.',true);printDoc('report',pr.body,{title:pr.title,sub:pr.sub})};
+  draw();
+};
 /* ---------- COMPANY CLAIMS ---------- */
 VIEWS.claims=el=>{
   el.innerHTML=`<div class="card"><h3>Claim to company (damage / expiry)</h3><div class="grid">

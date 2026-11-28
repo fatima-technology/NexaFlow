@@ -72,6 +72,11 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - Invoice banne par (cash ho ya udhaar) wo seedha **Sales invoices** mein hota hai.
 - Booker orders (live) mein har order ke saamne **Invoice banayein** (ya upar "Sab nayi orders ke Sales invoice banayein") hai: order Sales invoices mein chali jati hai (stock/udhaar khud update). Jo pehle se invoice ban chuki ho wahan "Sales invoice ✓" dikhta hai.
 
+## Supply man (bina app / login) — "Supply man hisab"
+- Supply man ko app ya login nahi chahiye. Users & access mein role **Supply man (no login)** se sirf naam banta hai.
+- Flow: invoice / picklist mein supply man chunein → print le kar supply man jata hai → wapas aa kar hisab deta hai → Admin (ya KPO) **Recovery → Supply man hisab** kholta hai.
+- Is screen par: us supply man ki bills (cash / udhaar), har udhaar bill ki mili hui cash likh kar **Cash save karein** (Supply man collection mein darj hoti hai), wapas aaya maal **Return save karein** (Returns mein supply man ke naam se), aur upar **"Supply man se cash milni chahiye"** (cash bills + udhaar se wasool − cash wapas) dikhta hai. Print ka button bhi hai.
+
 ## NexaFlow Field — Android app (Order Booker + Store Manager)
 Alag APK (`mobile/` folder, Capacitor). **Laptop / Windows app mein koi tabdeeli nahi hui** — woh pehle jaisi chalti hai.
 - **Login:** ek hi app; username/password se role ke hisaab se screens khulti hain (laptop par jo Booker / Store Manager users banaye hain wahi).
