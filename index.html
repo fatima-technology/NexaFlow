@@ -1109,6 +1109,7 @@ const MODULES=[
   {id:'collection',label:'Supply man collection',icon:'💵',group:'Recovery'},
   {id:'smhisab',label:'Supply man hisab',icon:'🧮',group:'Recovery'},
   {id:'recovery',label:'Market recovery',icon:'💰',group:'Recovery'},
+  {id:'recReports',label:'Recovery reports',icon:'📊',group:'Recovery'},
   {id:'shops',label:'Shops & routes',icon:'🏪',group:'Customers'},
   {id:'pgroups',label:'Customer groups & rates',icon:'🏷️',group:'Customers'},
   {id:'expenses',label:'Expenses',icon:'💸',group:'Accounts'},
@@ -1169,7 +1170,7 @@ function freshDB(){return{
   ],
   products:[],shops:[],invoices:[],purchases:[],supplierPayments:[],recoveries:[],collections:[],returns:[],claims:[],stockAdj:[],mobileDone:{},
   expenses:[],accounts:[{id:'acc_cash',name:'Cash in hand',type:'cash',opening:0,openingDate:today()}],transfers:[],
-  staffAdv:[],salarySetup:{},attendance:{},attendanceLogs:[],salaries:[],investors:[],investorTxns:[],activity:[],cashCounts:[],priceGroups:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0},
+  staffAdv:[],salarySetup:{},attendance:{},attendanceLogs:[],salaries:[],investors:[],investorTxns:[],activity:[],cashCounts:[],priceGroups:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0,rcpt:0},
   licence:{limit:200,unlimited:false,devName:'Fatima-Tech',phone:'',whatsapp:'',email:'',message:'Your free limit of invoices is complete. Please purchase the full version to continue.'}
 }}
 
@@ -1291,7 +1292,7 @@ function canSee(mid){
   if(m.devOnly)return isDev();
   if(mid==='companies'||mid==='masterSheet')return CO.on&&isAdmin();
   if(mid==='actlog')return isAdmin();
-  if(mid==='pgroups'||mid==='cashreg'||mid==='commission')return isAdmin()||!!(ME.perms&&ME.perms.includes(mid));
+  if(mid==='pgroups'||mid==='cashreg'||mid==='commission'||mid==='recReports')return isAdmin()||!!(ME.perms&&ME.perms.includes(mid));
   if(mid==='smhisab')return isAdmin()||ME.role==='kpo'||!!(ME.perms&&ME.perms.includes(mid));
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
@@ -3381,37 +3382,154 @@ VIEWS.collection=el=>{
     iv.deliveredAt=nowStamp();log('Recovery','Supply collection',iv.no,money(a));save();toast('Saved. Remaining '+money(invDue(iv))+' on credit.');render()};
   $$('[data-dco]').forEach(b=>b.onclick=()=>guardEdit((byId('collections',b.dataset.dco)||{}).date)&&confirmBox('Delete this collection?',()=>{DB.collections=DB.collections.filter(c=>c.id!==b.dataset.dco);log('Recovery','Collection deleted',b.dataset.dco);save();render()}));
 };
+/* =====================================================================
+   RECOVERY: entry form, JPG receipt, history (view / edit / void / share), reports
+   Hisab (ledger, account balance, daily cash, reports) records se khud nikalta hai, isliye save / edit / void par sab khud theek ho jata hai.
+   ===================================================================== */
+const shopCode=sh=>sh.code||('C-'+String(DB.shops.indexOf(sh)+1).padStart(4,'0'));
+function shopStats(sh){const iv=activeInv().filter(i=>i.shopId===sh.id);const sale=sum(iv,i=>i.net),sdue=sum(iv,invDue);const paid=r2(sale-sdue+sum(approvedRec().filter(r=>r.shopId===sh.id),r=>r.amount));
+  return{out:r2(shopDue(sh.id)),sale:r2(sale),paid,sdue:r2(Math.max(0,sale-paid)),dr:N(sh.opening)>0?N(sh.opening):0,cr:N(sh.opening)<0?-N(sh.opening):0}}
+const RC_METHODS=['Cash','Bank','Other'];
+const nowLocal=()=>{const d=new Date();return today()+'T'+pad(d.getHours())+':'+pad(d.getMinutes())};
+const paidOn=r=>r.paidAt||(r.date+'T00:00');
+const fmtPaid=v=>{const x=String(v||'');return fmtDate(x.slice(0,10))+(x.length>10&&x.slice(11)!=='00:00'?' '+x.slice(11,16):'')};
+function readDoc(f){return new Promise((res,rej)=>{if(!f)return res(null);if(f.type.startsWith('image/'))return readImage(f,1000,.7).then(d=>res({name:f.name,data:d})).catch(rej);
+  if(f.size>600*1024)return rej(new Error('PDF 600 KB se chhoti honi chahiye.'));const fr=new FileReader();fr.onerror=rej;fr.onload=()=>res({name:f.name,data:fr.result});fr.readAsDataURL(f)})}
+function recData(r){const sh=byId('shops',r.shopId)||{};if(!r.receiptNo){r.receiptNo=nextNo('rcpt','RC-');save()}
+  const bal=r.prevBalance!==undefined?{prev:N(r.prevBalance),rem:N(r.remBalance)}:(()=>{const L=(allLedgers()[r.shopId]||[]).find(x=>x.src==='rec'&&x.sid===r.id);return L?{prev:r2(L.bal+N(r.amount)),rem:r2(L.bal)}:{prev:shopDue(r.shopId),rem:r2(shopDue(r.shopId)-N(r.amount))}})();
+  const ac=byId('accounts',r.accountId);
+  return{no:r.receiptNo,name:r.shopName||sh.name||'',mobile:r.mobile||sh.phone||'',when:fmtPaid(paidOn(r)),method:r.method||'',account:ac?ac.name:'',prev:bal.prev,amt:N(r.amount),rem:bal.rem,note:r.note||'',by:r.collector||r.by||'',status:r.status}}
+function loadImg(src){return new Promise(res=>{if(!src)return res(null);const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src=src})}
+async function recCanvas(r){
+  const d=recData(r),st=S(),W=900,PAD=48,acc=st.accent||'#3949ab';
+  const font=(w,sz)=>w+' '+sz+'px "Segoe UI",Roboto,Arial,sans-serif';
+  const mc=document.createElement('canvas').getContext('2d');mc.font=font('',28);
+  const wrap=(t,w)=>{const out=[];String(t||'').split('\n').forEach(par=>{let line='';par.split(/\s+/).forEach(wd=>{const tt=line?line+' '+wd:wd;if(mc.measureText(tt).width>w&&line){out.push(line);line=wd}else line=tt});out.push(line)});return out};
+  const noteL=d.note?wrap(d.note,W-PAD*2-40):[];
+  const rows=[['Receipt No',d.no],['Customer',d.name],['Mobile',d.mobile||'—'],['Paid on',d.when],['Payment method',d.method],['Payment account',d.account||'—'],['Previous balance',money(d.prev)]];
+  const H=210+70+rows.length*66+170+(66)+(d.note?60+noteL.length*38:0)+300;
+  const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,W,H);
+  x.fillStyle=acc;x.fillRect(0,0,W,190);
+  const logo=await loadImg(st.logo);let tx=PAD;
+  if(logo){const h=100,w=Math.min(160,logo.width*h/logo.height);x.fillStyle='#fff';x.beginPath();x.roundRect?x.roundRect(PAD,45,w+20,h+10,16):x.rect(PAD,45,w+20,h+10);x.fill();x.drawImage(logo,PAD+10,50,w,h);tx=PAD+w+44}
+  x.fillStyle='#fff';x.textBaseline='alphabetic';x.font=font('bold',38);x.fillText(String(st.companyName||st.appName||'').slice(0,28),tx,92);
+  x.font=font('',23);x.globalAlpha=.9;const sub=[st.address,st.phone&&('Ph: '+st.phone)].filter(Boolean).join('  •  ');wrap(sub,W-tx-PAD).slice(0,2).forEach((l,i)=>x.fillText(l,tx,130+i*30));x.globalAlpha=1;
+  x.fillStyle='#222';x.font=font('bold',34);x.textAlign='center';x.fillText('PAYMENT RECEIPT',W/2,262);x.textAlign='left';
+  if(d.status==='void'||d.status==='pending'||d.status==='rejected'){x.save();x.translate(W/2,H/2);x.rotate(-.5);x.font=font('bold',110);x.textAlign='center';x.fillStyle=d.status==='void'?'rgba(200,30,30,.18)':'rgba(230,140,0,.2)';x.fillText(d.status==='void'?'VOID':d.status==='pending'?'PENDING':'REJECTED',0,0);x.restore()}
+  let y=300;const row=(k,v,bold)=>{x.strokeStyle='#e5e8f0';x.lineWidth=2;x.beginPath();x.moveTo(PAD,y+46);x.lineTo(W-PAD,y+46);x.stroke();x.fillStyle='#6b7280';x.font=font('',26);x.fillText(k,PAD,y+30);x.fillStyle='#111';x.font=font(bold?'bold':'',28);x.textAlign='right';x.fillText(String(v).slice(0,34),W-PAD,y+30);x.textAlign='left';y+=66};
+  rows.forEach(([k,v])=>row(k,v));
+  y+=16;x.fillStyle=acc;x.beginPath();x.roundRect?x.roundRect(PAD,y,W-PAD*2,130,22):x.rect(PAD,y,W-PAD*2,130);x.fill();
+  x.fillStyle='#fff';x.font=font('',26);x.fillText('Received amount',PAD+30,y+46);x.font=font('bold',58);x.fillText(money(d.amt),PAD+30,y+106);y+=130+26;
+  row('Remaining balance',money(d.rem),true);
+  if(d.note){y+=6;x.fillStyle='#6b7280';x.font=font('',26);x.fillText('Payment note',PAD,y+30);x.fillStyle='#111';x.font=font('',28);noteL.forEach((l,i)=>x.fillText(l,PAD,y+72+i*38));y+=60+noteL.length*38}
+  y+=26;x.strokeStyle='#e5e8f0';x.beginPath();x.moveTo(PAD,y);x.lineTo(W-PAD,y);x.stroke();
+  x.fillStyle='#6b7280';x.font=font('',26);x.fillText('Received by',PAD,y+46);x.fillStyle='#111';x.font=font('bold',30);x.fillText(d.by||'—',PAD,y+84);
+  x.fillStyle='#9aa1b0';x.font=font('',22);x.textAlign='center';x.fillText('Shukriya! Computer generated receipt',W/2,y+126);x.textAlign='left';
+  const out=document.createElement('canvas');out.width=W;out.height=Math.min(H,y+150);out.getContext('2d').fillStyle='#fff';out.getContext('2d').fillRect(0,0,W,out.height);out.getContext('2d').drawImage(c,0,0);return out}
+async function recJpg(r){const cv=await recCanvas(r);return new Promise(res=>cv.toBlob(res,'image/jpeg',.93))}
+const rcFile=r=>'Receipt_'+(r.receiptNo||'recovery')+'.jpg';
+function dlBlob(bl,name){const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},800)}
+async function shareReceipt(r){try{const bl=await recJpg(r);const f=new File([bl],rcFile(r),{type:'image/jpeg'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'Payment receipt '+(r.receiptNo||'')})}catch(e){}}
+  else{dlBlob(bl,rcFile(r));toast('Is device par seedhi sharing nahi hai: JPG download ho gayi, aap use WhatsApp mein bhej sakte hain.')}}catch(e){toast('Receipt nahi ban saki: '+e.message,true)}}
+async function showReceipt(r){
+  try{if(!r.receiptNo){recData(r)}const bl=await recJpg(r);const url=URL.createObjectURL(bl);
+    modal('Receipt '+(r.receiptNo||''),`<div style="text-align:center"><img src="${url}" alt="Receipt" style="max-width:100%;max-height:70vh;border:1px solid var(--line);border-radius:10px"></div><p class="small muted mt">Sharing optional hai: "Share" se WhatsApp ya koi bhi app chun sakte hain.</p>`,
+      [{t:'📤 Share',pri:1,fn:()=>shareReceipt(r)},{t:'⬇️ Download JPG',fn:()=>dlBlob(bl,rcFile(r))},...(navigator.clipboard&&window.ClipboardItem?[{t:'📋 Copy image',fn:async()=>{try{const cv=await recCanvas(r);const pb=await new Promise(z=>cv.toBlob(z,'image/png'));await navigator.clipboard.write([new ClipboardItem({'image/png':pb})]);toast('Image copy ho gayi, WhatsApp mein paste karein.')}catch(e){toast('Copy nahi ho saki.',true)}}}]:[])]);
+    const bg=$('#modalBg');const obs=new MutationObserver(()=>{if(!bg.classList.contains('on')){URL.revokeObjectURL(url);obs.disconnect()}});obs.observe(bg,{attributes:true,attributeFilter:['class']})
+  }catch(e){toast('Receipt nahi ban saki: '+e.message,true)}}
+function viewRec(r){const d=recData(r);const ac=byId('accounts',r.accountId);
+  modal('Recovery '+d.no,`<table class="kv"><tr><td>Customer</td><td>${esc(d.name)} (${esc(shopCode(byId('shops',r.shopId)||{}))})</td></tr><tr><td>Mobile</td><td>${esc(d.mobile||'—')}</td></tr><tr><td>Paid on</td><td>${esc(d.when)}</td></tr><tr><td>Method / account</td><td>${esc(d.method)} / ${esc(d.account||'—')}</td></tr><tr><td>Previous balance</td><td>${money(d.prev)}</td></tr><tr><td>Received</td><td><b>${money(d.amt)}</b></td></tr><tr><td>Remaining balance</td><td>${money(d.rem)}</td></tr><tr><td>Status</td><td>${esc(r.status)}${r.status==='void'?' — '+esc(r.voidReason||''):''}</td></tr><tr><td>Received by</td><td>${esc(d.by)}</td></tr><tr><td>Entered by</td><td>${esc(r.by||'')} ${esc(r.at||'')}</td></tr>${r.editedBy?`<tr><td>Last edited</td><td>${esc(r.editedBy)} ${esc(r.editedAt||'')}</td></tr>`:''}</table>${d.note?`<p><b>Note:</b> ${esc(d.note)}</p>`:''}${r.doc?(String(r.doc.data).startsWith('data:image')?`<p><b>Attachment:</b><br><img src="${r.doc.data}" style="max-width:100%;max-height:260px"></p>`:`<p><b>Attachment:</b> <a href="${r.doc.data}" download="${esc(r.doc.name)}">${esc(r.doc.name)}</a></p>`):''}`,
+    [{t:'🧾 View JPG',pri:1,fn:()=>showReceipt(r)}])}
+function editRec(r){
+  if(!isAdmin())return toast('Sirf admin edit kar sakta hai.',true);if(r.status==='void')return toast('Void record edit nahi ho sakta.',true);
+  if(!guardEdit(r.status==='approved'?r.approvedDate||r.date:r.date))return;
+  modal('Edit recovery '+(r.receiptNo||''),`<div class="grid">${F('Customer',`<input readonly value="${esc(r.shopName)}">`,'wide')}${F('Paid on',inp('erW',paidOn(r),'datetime-local'))}${F('Amount',inp('erA',r.amount,'number','step="any"'))}${F('Payment method',sel('erM',[...new Set([...RC_METHODS,r.method].filter(Boolean))],r.method))}${F('Payment account',sel('erC',accOptions(),r.accountId))}${F('Note',inp('erN',r.note||''),'wide')}</div><p class="small muted mt">Save karne par ledger, account balance aur reports khud dobara hisab ho jate hain. Purani aur nayi value Activity log mein jati hai.</p>`,
+   [{t:'Save',pri:1,fn:()=>{const amt=N(V('erA')),w=V('erW');if(!(amt>0))return toast('Amount zero ya minus nahi ho sakta.',true);if(!w)return toast('Date chunein.',true);if(!V('erC'))return toast('Account chunein.',true);if(!V('erM'))return toast('Method chunein.',true);
+     if(!guardEdit(w.slice(0,10)))return;const sb=snapRec(r);
+     r.amount=amt;r.paidAt=w;r.date=w.slice(0,10);if(r.status==='approved')r.approvedDate=r.date;r.method=V('erM');r.accountId=V('erC');r.note=V('erN');
+     if(r.prevBalance!==undefined)r.remBalance=r2(N(r.prevBalance)-amt);
+     r.short=Math.max(0,r2(N(r.expected)-amt));r.adjust=r.adjustType==='none'?0:r.short;
+     DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);if(r.status==='approved'&&r.adjustType==='staff'&&r.short>0&&r.staffId)DB.staffAdv.push({id:uid(),date:r.date,staffId:r.staffId,staffName:r.staffName,type:'Cash Difference',amount:r.short,deductMonth:monthOf(r.date),note:'Recovery short: '+r.shopName,recoveryId:r.id});
+     r.editedBy=ME.username;r.editedAt=nowStamp();logEdit('Recovery','Recovery edited',r.shopName+' '+(r.receiptNo||''),money(amt),sb,r);clearCache();save();closeModal();toast('Recovery update ho gayi.');render()}}])}
+function voidRec(r){
+  if(!isAdmin())return toast('Sirf admin void kar sakta hai.',true);if(r.status==='void')return;if(!guardEdit(r.status==='approved'?r.approvedDate||r.date:r.date))return;
+  modal('Recovery void karein',`<p>${esc(r.shopName)} — ${money(r.amount)} (${esc(r.receiptNo||'')}). Void karne se ye raqam customer ke hisab aur account se wapas ho jayegi. Record history mein "Void" ke naam se rahega.</p><div class="grid">${F('Wajah (zaroori)',inp('vrW',''),'wide')}</div>`,
+   [{t:'Void karein',bad:1,fn:()=>{if(!V('vrW'))return toast('Wajah likhein.',true);const sb=snapRec(r);r.voidFrom=r.status;r.status='void';r.voidBy=ME.username;r.voidAt=nowStamp();r.voidReason=V('vrW');
+     DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Recovery void',r.shopName+' '+(r.receiptNo||''),money(r.amount)+' — '+r.voidReason,recTxt(sb),'status: void');clearCache();save();closeModal();toast('Recovery void ho gayi, hisab wapas theek.');render()}}])}
 VIEWS.recovery=el=>{
   const shops=visibleShops();const staff=staffList();const coll=DB.users.filter(u=>['booker','supplyman','admin','kpo'].includes(u.role));
   const vis=isAdmin()?DB.recoveries:DB.recoveries.filter(r=>r.collectorId===ME.id||r.by===ME.username);
   el.innerHTML=`<div class="card"><h3>Market recovery</h3><div class="grid">
-   ${F('Date',inp('rcDate',today(),'date'))}${F('Collector',isAdmin()||ME.role==='kpo'?sel('rcCol',coll.map(u=>({v:u.id,t:(u.name||u.username)+' ('+(ROLES[u.role]||u.role)+')'})),ME.id):`<input readonly value="${esc(ME.name||ME.username)}"><input type="hidden" id="rcCol" value="${ME.id}">`)}
-   ${F('Shop',sel('rcShop',shops.map(s=>({v:s.id,t:shopLabel(s)+' — due '+fmt(shopDue(s.id))})),'','Select shop'),'wide')}
-   ${F('Amount due',inp('rcExp','','number'))}${F('Actually received',inp('rcAmt','','number','inputmode="decimal"'))}${F('Short',inp('rcShort','','text','readonly'))}
-   ${F('Short handling',sel('rcAdj',[{v:'none',t:'None (stays due on shop)'},{v:'staff',t:'Staff responsibility (cash difference)'},{v:'discount',t:'Given as discount'}],'none'))}
-   ${F('Responsible staff',sel('rcStaff',staff.map(u=>({v:u.id,t:u.name||u.username})),'','—'))}
-   ${F('Payment method',sel('rcMeth',['Cash','Bank transfer','Easypaisa','JazzCash','Cheque'],'Cash'))}${F('Account',sel('rcAcc',accOptions(),'acc_cash'))}${F('Note',inp('rcNote'),'wide')}</div>
+   ${F('Customer *',sel('rcShop',shops.map(s=>({v:s.id,t:shopLabel(s)})),'','Select customer'),'wide')}
+   ${F('Customer ID',inp('rcCid','','text','readonly'))}${F('Mobile',inp('rcMob','','text','readonly'))}
+   ${F('Outstanding balance',inp('rcOut','','text','readonly'))}${F('Total sale',inp('rcTS','','text','readonly'))}${F('Total paid',inp('rcTP','','text','readonly'))}${F('Total sale due',inp('rcTD','','text','readonly'))}
+   ${F('Opening balance (Cr)',inp('rcCr','','text','readonly'))}${F('Opening balance (Dr)',inp('rcDr','','text','readonly'))}
+   ${F('Payment method *',sel('rcMeth',RC_METHODS,'Cash'))}${F('Paid on (date & time) *',inp('rcWhen',nowLocal(),'datetime-local'))}
+   ${F('Amount *',inp('rcAmt','','number','inputmode="decimal" step="any" min="0"'))}${F('Payment account *',sel('rcAcc',accOptions(),'acc_cash','Select account'))}
+   ${F('Collector',isAdmin()||ME.role==='kpo'?sel('rcCol',coll.map(u=>({v:u.id,t:(u.name||u.username)+' ('+(ROLES[u.role]||u.role)+')'})),ME.id):`<input readonly value="${esc(ME.name||ME.username)}"><input type="hidden" id="rcCol" value="${ME.id}">`)}
+   ${F('Attach document (optional)',`<input id="rcDoc" type="file" accept="image/*,application/pdf">`)}${F('Payment note (optional)',inp('rcNote'),'wide')}</div>
+   <details class="mt"><summary class="small muted">Kami (short) ka hisab — optional</summary><div class="grid mt">${F('Amount due',inp('rcExp','','number'))}${F('Short',inp('rcShort','','text','readonly'))}
+   ${F('Short handling',sel('rcAdj',[{v:'none',t:'None (stays due on shop)'},{v:'staff',t:'Staff responsibility (cash difference)'},{v:'discount',t:'Given as discount'}],'none'))}${F('Responsible staff',sel('rcStaff',staff.map(u=>({v:u.id,t:u.name||u.username})),'','—'))}</div></details>
    <div class="row mt"><button class="btn pri" id="rcGo">${S().recoveryNeedsApproval&&!isAdmin()?'Send for approval':'Save recovery'}</button></div></div>
-   <div class="card"><h3>Recoveries${isAdmin()?'<span class="sp"></span><button class="btn sm pri" id="rcAppSel">✅ Selected approve</button>':''}</h3>
-   <div class="tabs">${['pending','approved','rejected'].map((s,i)=>`<button data-rs="${s}" class="${i===0?'on':''}">${s==='pending'?'Pending':s==='approved'?'Approved':'Rejected'} (${vis.filter(r=>r.status===s).length})</button>`).join('')}</div><div id="rcList"></div></div>`;
-  const calc=()=>{const sh=byId('shops',V('rcShop'));if(sh&&!$('#rcExp').dataset.touched)$('#rcExp').value=Math.max(0,r2(shopDue(sh.id)));const s=N(V('rcExp'))-N(V('rcAmt'));$('#rcShort').value=fmt(Math.max(0,s))};
-  $('#rcShop').onchange=()=>{$('#rcExp').dataset.touched='';calc()};$('#rcExp').oninput=()=>{$('#rcExp').dataset.touched='1';calc()};$('#rcAmt').oninput=calc;
-  $('#rcGo').onclick=()=>{const sh=byId('shops',V('rcShop'));if(!sh)return toast('Select a shop.',true);const amt=N(V('rcAmt'));if(amt<=0&&V('rcAdj')==='none')return toast('Enter amount.',true);
-    if(!guard(V('rcDate')))return;const short=Math.max(0,N(V('rcExp'))-amt);const adj=V('rcAdj');if(adj==='staff'&&!V('rcStaff'))return toast('Select the responsible staff.',true);
-    const col=byId('users',V('rcCol')),st=byId('users',V('rcStaff'));
-    const r={id:uid(),date:V('rcDate'),collectorId:V('rcCol'),collector:col?col.name||col.username:'',shopId:sh.id,shopName:sh.name,expected:N(V('rcExp')),amount:amt,short,adjustType:adj,adjust:adj==='none'?0:short,staffId:st?st.id:'',staffName:st?st.name||st.username:'',method:V('rcMeth'),accountId:V('rcAcc'),note:V('rcNote'),status:'pending',by:ME.username,at:nowStamp()};
-    DB.recoveries.push(r);if(!S().recoveryNeedsApproval||isAdmin())approveRec(r);log('Recovery','Recovery submitted',sh.name,money(amt));save();toast(r.status==='approved'?'Recovery approved.':'Sent for approval.');render()};
+   <div class="card"><h3>Recovery history${isAdmin()?'<span class="sp"></span><button class="btn sm pri" id="rcAppSel">✅ Selected approve</button>':''}</h3>
+   <div class="tabs">${['pending','approved','rejected','void'].map((s,i)=>`<button data-rs="${s}" class="${i===0?'on':''}">${s==='pending'?'Pending':s==='approved'?'Approved':s==='rejected'?'Rejected':'Void'} (${vis.filter(r=>r.status===s).length})</button>`).join('')}</div><div id="rcList"></div></div>`;
+  const calc=()=>{const sh=byId('shops',V('rcShop'));
+    if(sh){const t=shopStats(sh);$('#rcCid').value=shopCode(sh);$('#rcMob').value=sh.phone||'';$('#rcOut').value=money(t.out);$('#rcTS').value=money(t.sale);$('#rcTP').value=money(t.paid);$('#rcTD').value=money(t.sdue);$('#rcCr').value=money(t.cr);$('#rcDr').value=money(t.dr);if(!$('#rcExp').dataset.touched)$('#rcExp').value=Math.max(0,t.out)}
+    else['rcCid','rcMob','rcOut','rcTS','rcTP','rcTD','rcCr','rcDr'].forEach(i=>$('#'+i).value='');
+    $('#rcShort').value=fmt(Math.max(0,N(V('rcExp'))-N(V('rcAmt'))))};
+  $('#rcShop').onchange=()=>{$('#rcExp').dataset.touched='';calc()};$('#rcExp').oninput=()=>{$('#rcExp').dataset.touched='1';calc()};$('#rcAmt').oninput=calc;calc();
+  let busy=false;
+  $('#rcGo').onclick=async()=>{if(busy)return;const sh=byId('shops',V('rcShop'));
+    if(!sh)return toast('Customer chunein.',true);if(!V('rcMeth'))return toast('Payment method chunein.',true);if(!V('rcWhen'))return toast('Payment date chunein.',true);
+    const amt=N(V('rcAmt'));if(V('rcAmt')===''||!(amt>0))return toast('Amount likhein (zero ya minus nahi chalega).',true);if(!V('rcAcc'))return toast('Payment account chunein.',true);
+    const when=V('rcWhen'),date=when.slice(0,10);if(date>today())return toast('Aane wali tareekh nahi ho sakti.',true);if(!guard(date))return;
+    const adj=V('rcAdj');if(adj==='staff'&&!V('rcStaff'))return toast('Select the responsible staff.',true);
+    const nowMs=Date.now();const dup=DB.recoveries.find(x=>x.shopId===sh.id&&!['rejected','void'].includes(x.status)&&N(x.amount)===amt&&x.method===V('rcMeth')&&x.accountId===V('rcAcc')&&(nowMs-N(x.atMs))<5*60*1000);
+    if(dup)return toast('Duplicate: isi customer ki yehi raqam abhi abhi save ho chuki hai ('+(dup.receiptNo||'')+'). Dobara save nahi hui.',true);
+    const prev=r2(shopDue(sh.id));
+    const go=async()=>{if(busy)return;busy=true;$('#rcGo').disabled=true;
+      try{let doc=null;try{doc=await readDoc($('#rcDoc').files[0])}catch(e){busy=false;$('#rcGo').disabled=false;return toast(e.message||'Document nahi lag saka.',true)}
+        const short=Math.max(0,N(V('rcExp'))-amt),col=byId('users',V('rcCol')),st=byId('users',V('rcStaff'));
+        const r={id:uid(),receiptNo:nextNo('rcpt','RC-'),date,paidAt:when,collectorId:V('rcCol'),collector:col?col.name||col.username:'',shopId:sh.id,shopName:sh.name,mobile:sh.phone||'',expected:N(V('rcExp')),amount:amt,short,adjustType:adj,adjust:adj==='none'?0:short,staffId:st?st.id:'',staffName:st?st.name||st.username:'',method:V('rcMeth'),accountId:V('rcAcc'),note:V('rcNote'),status:'pending',prevBalance:prev,remBalance:r2(prev-amt),by:ME.username,at:nowStamp(),atMs:Date.now()};
+        if(doc)r.doc=doc;
+        DB.recoveries.push(r);if(!S().recoveryNeedsApproval||isAdmin())approveRec(r);log('Recovery','Recovery submitted',sh.name+' '+r.receiptNo,money(amt)+' • '+r.method,'','Balance '+money(prev)+' → '+money(r.remBalance));clearCache();save();
+        toast(r.status==='approved'?'Recovery save ho gayi.':'Approval ke liye bhej di.');render();showReceipt(r)}
+      finally{busy=false}};
+    if(amt>prev+0.001&&prev>=0)confirmBox('Ye raqam customer ke outstanding ('+money(prev)+') se '+money(amt-prev)+' zyada hai. Zyada raqam advance (credit) ban jayegi. Phir bhi save karein?',go);
+    else if(prev<0)confirmBox('Customer ka balance pehle se credit hai ('+money(prev)+'). Phir bhi recovery save karein?',go);
+    else go()};
   const list=s=>{$$('[data-rs]').forEach(b=>b.classList.toggle('on',b.dataset.rs===s));const l=vis.filter(r=>r.status===s).slice().reverse();
-    $('#rcList').innerHTML=table([{t:'✓'},{t:'Date'},{t:'Shop'},{t:'Collector'},{t:'Method'},{t:'Amount',n:1},{t:'Short',n:1},{t:'Adjustment'},{t:''}],l.map(r=>[s==='pending'&&isAdmin()?`<input type="checkbox" data-rck="${r.id}">`:'',fmtDate(r.date),esc(r.shopName),esc(r.collector),esc(r.method),fmt(r.amount),fmt(r.short),r.adjustType==='staff'?'Staff: '+esc(r.staffName):r.adjustType==='discount'?'Discount':'—',
-      `<div class="row"><button class="btn sm" data-rpr="${r.id}">🖨️</button>${isAdmin()&&s==='pending'?`<button class="btn sm pri" data-rap="${r.id}">✅</button><button class="btn sm bad" data-rrj="${r.id}">✖</button>`:''}${isAdmin()?`<button class="btn sm bad" data-rdl="${r.id}">🗑️</button>`:''}</div>`]),['','','','','Total',fmt(sum(l,r=>r.amount)),fmt(sum(l,r=>r.short)),'','']);
-    $$('[data-rap]').forEach(b=>b.onclick=()=>{approveRec(byId('recoveries',b.dataset.rap));save();render()});
+    $('#rcList').innerHTML=table([{t:'✓'},{t:'Date'},{t:'Receipt'},{t:'Customer'},{t:'Collector'},{t:'Method'},{t:'Amount',n:1},{t:'Remaining',n:1},{t:''}],l.map(r=>[s==='pending'&&isAdmin()?`<input type="checkbox" data-rck="${r.id}">`:'',fmtPaid(paidOn(r)),esc(r.receiptNo||'—'),esc(r.shopName),esc(r.collector),esc(r.method),fmt(r.amount),r.remBalance!==undefined?fmt(r.remBalance):'',
+      `<div class="row"><button class="btn sm" data-rvw="${r.id}" title="View">👁</button><button class="btn sm" data-rjp="${r.id}" title="JPG receipt">🧾</button><button class="btn sm" data-rsh="${r.id}" title="Share">📤</button><button class="btn sm" data-rpr="${r.id}" title="Print">🖨️</button>${isAdmin()&&s==='pending'?`<button class="btn sm pri" data-rap="${r.id}">✅</button><button class="btn sm bad" data-rrj="${r.id}">✖</button>`:''}${isAdmin()&&s!=='void'?`<button class="btn sm" data-red="${r.id}" title="Edit">✏️</button><button class="btn sm bad" data-rvd="${r.id}" title="Void">🚫</button>`:''}${isAdmin()?`<button class="btn sm bad" data-rdl="${r.id}" title="Delete">🗑️</button>`:''}</div>`]),['','','','','','Total',fmt(sum(l,r=>r.amount)),'','']);
+    $$('[data-rvw]').forEach(b=>b.onclick=()=>viewRec(byId('recoveries',b.dataset.rvw)));$$('[data-rjp]').forEach(b=>b.onclick=()=>showReceipt(byId('recoveries',b.dataset.rjp)));$$('[data-rsh]').forEach(b=>b.onclick=()=>shareReceipt(byId('recoveries',b.dataset.rsh)));
+    $$('[data-red]').forEach(b=>b.onclick=()=>editRec(byId('recoveries',b.dataset.red)));$$('[data-rvd]').forEach(b=>b.onclick=()=>voidRec(byId('recoveries',b.dataset.rvd)));
+    $$('[data-rap]').forEach(b=>b.onclick=()=>{approveRec(byId('recoveries',b.dataset.rap));clearCache();save();render()});
     $$('[data-rrj]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rrj);r.status='rejected';r.rejectedBy=ME.username;log('Recovery','Rejected',r.shopName,money(r.amount));save();render()});
-    $$('[data-rdl]').forEach(b=>b.onclick=()=>{const rr=byId('recoveries',b.dataset.rdl)||{};return guardEdit(rr.status==='approved'?rr.approvedDate||rr.date:'')&&confirmBox('Delete this recovery record?',()=>{const r=byId('recoveries',b.dataset.rdl);DB.recoveries=DB.recoveries.filter(x=>x.id!==r.id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Deleted',r.shopName,money(r.amount),recTxt(snapRec(r)));save();render()})});
-    $$('[data-rpr]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rpr);printDoc('recovery',`<div class="meta"><div><b>Date:</b> ${fmtDate(r.date)}</div><div><b>Status:</b> ${r.status}</div><div><b>Shop:</b> ${esc(r.shopName)}</div><div><b>Collector:</b> ${esc(r.collector)}</div></div><table class="kv"><tr><td>Amount received (${esc(r.method)})</td><td>${money(r.amount)}</td></tr>${r.short?`<tr><td>Short</td><td>${money(r.short)}</td></tr>`:''}<tr><td>Balance after</td><td>${money(shopDue(r.shopId))}</td></tr></table>${r.note?`<p>${esc(r.note)}</p>`:''}`)});
+    $$('[data-rdl]').forEach(b=>b.onclick=()=>{const rr=byId('recoveries',b.dataset.rdl)||{};return guardEdit(rr.status==='approved'?rr.approvedDate||rr.date:'')&&confirmBox('Delete this recovery record? (Behtar hai "Void" karein taake record rahe.)',()=>{const r=byId('recoveries',b.dataset.rdl);DB.recoveries=DB.recoveries.filter(x=>x.id!==r.id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Deleted',r.shopName,money(r.amount),recTxt(snapRec(r)));clearCache();save();render()})});
+    $$('[data-rpr]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rpr);const d=recData(r);printDoc('recovery',`<div class="meta"><div><b>Receipt:</b> ${esc(d.no)}</div><div><b>Date:</b> ${esc(d.when)}</div><div><b>Status:</b> ${r.status}</div><div><b>Customer:</b> ${esc(r.shopName)}</div><div><b>Received by:</b> ${esc(d.by)}</div></div><table class="kv"><tr><td>Previous balance</td><td>${money(d.prev)}</td></tr><tr><td>Amount received (${esc(r.method)}${d.account?' — '+esc(d.account):''})</td><td>${money(r.amount)}</td></tr><tr><td>Remaining balance</td><td>${money(d.rem)}</td></tr></table>${r.note?`<p>${esc(r.note)}</p>`:''}`)});
   };
   $$('[data-rs]').forEach(b=>b.onclick=()=>list(b.dataset.rs));list('pending');
-  if($('#rcAppSel'))$('#rcAppSel').onclick=()=>{const ids=$$('[data-rck]:checked').map(c=>c.dataset.rck);if(!ids.length)return toast('Tick records first.',true);ids.forEach(id=>approveRec(byId('recoveries',id)));save();toast(ids.length+' approved.');render()};
+  if($('#rcAppSel'))$('#rcAppSel').onclick=()=>{const ids=$$('[data-rck]:checked').map(c=>c.dataset.rck);if(!ids.length)return toast('Tick records first.',true);ids.forEach(id=>approveRec(byId('recoveries',id)));clearCache();save();toast(ids.length+' approved.');render()};
 };
+/* ---- Recovery reports ---- */
+VIEWS.recReports=el=>{
+  const TY=[{v:'daily',t:'Daily recovery (ek din ki list)'},{v:'datewise',t:'Date-wise (har din ka total)'},{v:'monthly',t:'Monthly'},{v:'customer',t:'Customer-wise'},{v:'cash',t:'Cash recovery'},{v:'bank',t:'Bank / other recovery'},{v:'user',t:'User-wise (collector)'}];
+  reportBlock(el,{title:'Recovery reports',filters:F('Report',sel('rrT',TY,'daily'))+dateRange('rr',today(),today())+F('Customer',sel('rrS',DB.shops.map(x=>({v:x.id,t:x.name})),'','Sab'))+F('Collector',sel('rrU',DB.users.filter(u=>['booker','supplyman','admin','kpo'].includes(u.role)).map(u=>({v:u.id,t:u.name||u.username})),'','Sab')),
+    build:()=>{const t=V('rrT'),acType=id=>(byId('accounts',id)||{}).type||'';
+      let l=approvedRec().filter(r=>inRange(r.date,V('rrFrom'),V('rrTo'))&&(!V('rrS')||r.shopId===V('rrS'))&&(!V('rrU')||r.collectorId===V('rrU')));
+      if(t==='cash')l=l.filter(r=>r.method==='Cash'||acType(r.accountId)==='cash');if(t==='bank')l=l.filter(r=>!(r.method==='Cash'||acType(r.accountId)==='cash'));
+      const grp=(keyf,lab)=>{const g={};l.forEach(r=>{const k=keyf(r);(g[k]=g[k]||[]).push(r)});return Object.keys(g).sort().map(k=>[lab(k,g[k]),g[k].length,sum(g[k],r=>r.amount)])};
+      const cards=[['Recoveries',l.length],['Total',money(sum(l,r=>r.amount))],['Cash',money(sum(l.filter(r=>r.method==='Cash'||acType(r.accountId)==='cash'),r=>r.amount))]];
+      const tot=['Total',sum(l,()=>1),sum(l,r=>r.amount)];
+      if(t==='datewise')return{cards,sub:t,cols:[{t:'Date'},{t:'Count',n:1},{t:'Amount',n:1}],rows:grp(r=>r.date,(k)=>fmtDate(k)),foot:tot};
+      if(t==='monthly')return{cards,sub:t,cols:[{t:'Month'},{t:'Count',n:1},{t:'Amount',n:1}],rows:grp(r=>String(r.date).slice(0,7),k=>k),foot:tot};
+      if(t==='customer')return{cards,sub:t,cols:[{t:'Customer'},{t:'Count',n:1},{t:'Amount',n:1}],rows:grp(r=>r.shopName||'',k=>k),foot:tot};
+      if(t==='user')return{cards,sub:t,cols:[{t:'Collector'},{t:'Count',n:1},{t:'Amount',n:1}],rows:grp(r=>r.collector||'',k=>k),foot:tot};
+      return{cards,sub:V('rrFrom')+' → '+V('rrTo'),cols:[{t:'Date'},{t:'Receipt'},{t:'Customer'},{t:'Method'},{t:'Account'},{t:'Collector'},{t:'Amount',n:1}],
+        rows:l.slice().sort((a,b)=>paidOn(a).localeCompare(paidOn(b))).map(r=>[fmtPaid(paidOn(r)),r.receiptNo||'',r.shopName,r.method,(byId('accounts',r.accountId)||{}).name||'',r.collector,N(r.amount)]),foot:['Total','','','','','',sum(l,r=>r.amount)]}}})};
+
 function approveRec(r){if(!r||r.status==='approved')return;r.status='approved';r.approvedBy=ME.username;r.approvedDate=today();
   if(r.adjustType==='staff'&&r.short>0&&r.staffId)DB.staffAdv.push({id:uid(),date:r.date,staffId:r.staffId,staffName:r.staffName,type:'Cash Difference',amount:r.short,deductMonth:monthOf(r.date),note:'Recovery short: '+r.shopName,recoveryId:r.id});
   log('Recovery','Approved',r.shopName,money(r.amount))}

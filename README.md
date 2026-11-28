@@ -67,6 +67,12 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Booker commission** — Staff menu. Shared basis (Recovery / Sale / Dono) + shared %, har booker ka alag basis/% bhi. Mahana statement (sab bookers ya ek booker ki detail), print/Excel. Default: recovery par 1%.
 - **Customer groups & rates** — Customers menu. Groups (Wholesale/Retail/Special), rate Trade ya Retail se +/-%, product ka khaas rate, shop ya poori route ko group. POS mein shop ka group rate khud aata hai. (Android Field app abhi purane rate use karti hai.)
 
+## Recovery upgrade + JPG receipt
+- Market recovery form: customer auto-fetch (ID, mobile, outstanding, total sale/paid/due, opening Cr/Dr), method (Cash/Bank/Other), date+time, account, optional document and note. Zero/minus amount reject, duplicate (same customer+amount+method+account within 5 min) reject, excess amount par warning.
+- Save par professional **JPG receipt** khud banti hai (View, Download, Share — sharing optional, sirf device ki normal share / WhatsApp chooser, koi WhatsApp API nahi). Ledger, account balance aur reports records se khud update hote hain.
+- History: View, Edit, Void (wajah ke saath, hisab wapas), Delete (admin), JPG, Share. Edit/void sirf admin; sab Activity log mein purani/nayi value ke saath.
+- Recovery reports menu: Daily, Date-wise, Monthly, Customer-wise, Cash, Bank, User-wise.
+
 ## Naye device par login (developer ke baghair)
 - Naye laptop par .exe kholne par (ya pehla login try karne par) window aati hai: **Client code + username + password**. App cloud ke aakhri Day End backup se password ka *hash* check karti hai (plain password kahin save nahi hota). Theek ho to data aur users khud wapas aate hain aur login ho jata hai. Developer / admin password nahi poochha jata.
 - Admin apna Client code **Backup & day end** screen par dekh sakta hai. Client ko bas code + username + password dena hai.
