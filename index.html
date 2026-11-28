@@ -538,7 +538,9 @@ body.s-neon #welcome path{stroke:color-mix(in srgb,var(--accent) 60%,transparent
 @keyframes updPulse{0%,100%{box-shadow:0 0 0 0 rgba(30,122,86,.55)}50%{box-shadow:0 0 0 7px rgba(30,122,86,0)}}
 /* Desktop (.exe): header hi title bar hai; Windows ke minimize/maximize/close buttons ke liye jagah */
 html.desk .top{-webkit-app-region:drag;padding-right:150px}
-html.desk .top button,html.desk .top .chip,html.desk .top input,html.desk .user-menu{-webkit-app-region:no-drag}
+html.desk .top button,html.desk .top .chip,html.desk .top input,html.desk .top select,html.desk .user-menu{-webkit-app-region:no-drag}
+#coSel{max-width:200px;font-weight:700;border:1px solid #8886;border-radius:10px;padding:5px 8px;background:var(--card,#fff);color:inherit;cursor:pointer}
+#coSel[hidden]{display:none!important}
 html.desk #login .login-mode,html.desk .login-mode{right:150px!important}
 html.desk .lamp-dots{right:150px}
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
@@ -1005,6 +1007,7 @@ body.has-netbar .top{top:26px}
     <header class="top">
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <h2 id="pageTitle">Dashboard</h2>
+      <select id="coSel" hidden title="Company badlein" aria-label="Company"></select>
       <span class="chip" id="bizDate">—</span>
       <span class="chip" id="verChip" hidden title="App version"></span>
       <button class="mode-btn" id="updBtn" type="button" hidden title="Nayi version available">⬆</button>
@@ -1092,8 +1095,8 @@ const MODULES=[
   {id:'dashboard',label:'Dashboard',icon:'📊',group:'Main'},
   {id:'pos',label:'Order booking / POS',icon:'🛒',group:'Sales'},
   {id:'orderSync',label:'Sync & Day End',icon:'🔄',group:'Sales'},
-  {id:'liveOrders',label:'Booker orders (live)',icon:'📡',group:'Sales'},
-  {id:'mobileInbox',label:'Mobile inbox (APK)',icon:'📱',group:'Sales'},
+  {id:'liveOrders',label:'Booker orders (live)',icon:'📡',group:'Sales',hideNav:true},
+  {id:'mobileInbox',label:'Mobile inbox (APK)',icon:'📱',group:'Sales',hideNav:true},
   {id:'invoices',label:'Sales invoices',icon:'📄',group:'Sales'},
   {id:'delivery',label:'Delivery dates',icon:'📅',group:'Sales'},
   {id:'picklist',label:'Picklist / load sheet',icon:'🚚',group:'Sales'},
@@ -1104,6 +1107,7 @@ const MODULES=[
   {id:'suppliers',label:'Supplier dues',icon:'📒',group:'Purchase & stock'},
   {id:'products',label:'Products & stock',icon:'📦',group:'Purchase & stock'},
   {id:'collection',label:'Supply man collection',icon:'💵',group:'Recovery'},
+  {id:'smhisab',label:'Supply man hisab',icon:'🧮',group:'Recovery'},
   {id:'recovery',label:'Market recovery',icon:'💰',group:'Recovery'},
   {id:'shops',label:'Shops & routes',icon:'🏪',group:'Customers'},
   {id:'expenses',label:'Expenses',icon:'💸',group:'Accounts'},
@@ -1117,6 +1121,8 @@ const MODULES=[
   {id:'attendanceLog',label:'Attendance & timings',icon:'🕒',group:'Staff'},
   {id:'users',label:'Users & access',icon:'⚙️',group:'System'},
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
+  {id:'companies',label:'Companies',icon:'🏢',group:'System'},
+  {id:'masterSheet',label:'Master sheet (sab companies)',icon:'📑',group:'Reports'},
   {id:'help',label:'User manual',icon:'📘',group:'System'},
   {id:'devpanel',label:'Developer control',icon:'🛠️',group:'Developer',devOnly:true},
   {id:'fsSettings',label:'Order sync settings',icon:'☁️',group:'Developer',devOnly:true},
@@ -1129,7 +1135,7 @@ const ROLE_DEFAULTS={
   admin:MODULES.filter(m=>!m.devOnly).map(m=>m.id),
   booker:['dashboard','pos','orderSync','invoices','recovery','shops','bookerReports','help'],
   storemanager:['dashboard','products','purchases','suppliers','returns','claims','storeReports','help'],
-  kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','recovery','shops','expenses','help'],
+  kpo:['dashboard','pos','invoices','delivery','picklist','returns','collection','smhisab','recovery','shops','expenses','help'],
   supplyman:[],
   staff:[]
 };
@@ -1164,7 +1170,7 @@ function freshDB(){return{
 }}
 
 /* ---------- storage ---------- */
-let DB=null;
+let DB=null;let DB_KEY=LS_KEY;
 function deepMerge(base,over){if(Array.isArray(base))return Array.isArray(over)?over:base;if(base&&typeof base==='object'){const o={...base};if(over&&typeof over==='object')for(const k in over)o[k]=k in base?deepMerge(base[k],over[k]):over[k];return o}return over===undefined?base:over}
 function normalize(d){
   clearCache();
@@ -1186,23 +1192,79 @@ const IDB={db:null,
   set(k,v){return new Promise((res,rej)=>{if(!this.db)return rej(new Error('IndexedDB not found'));try{const tx=this.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)}catch(e){rej(e)}})}
 };
 let PENDING=Promise.resolve();
+/* ---------- MULTI-COMPANY: ek client ki kayi companies, har company ka alag data (sirf jis client par master ne on kiya) ---------- */
+function kvSet(k,t){return(IDB.db?IDB.set(k,t):Promise.reject(new Error('no idb'))).catch(()=>{try{localStorage.setItem(k,t)}catch(e){console.error(e)}})}
+const CO={on:false,cur:'main',list:[{id:'main'}],users:[],dbs:{},REG:LS_KEY+'_mc',
+  key(id){return id==='main'?LS_KEY:LS_KEY+'_'+id},
+  name(id){const d=this.dbs[id];return(d&&d.settings&&d.settings.companyName)||(id==='main'?'Main company':id)},
+  visible(u,id){return u.role==='developer'||!Array.isArray(u.companies)||!u.companies.length||u.companies.includes(id)},
+  allowed(u){return this.on&&u?this.list.filter(c=>this.visible(u,c.id)):[]},
+  async loadReg(){let raw=await IDB.get(this.REG);if(!raw)try{raw=localStorage.getItem(this.REG)}catch(e){}
+    if(!raw)return;try{const r=JSON.parse(raw);if(r&&Array.isArray(r.list)&&r.list.length){this.list=r.list;this.users=r.users||[];this.on=!!r.on;this.cur=r.on&&r.list.some(c=>c.id===r.cur)?r.cur:'main'}}catch(e){console.error(e)}},
+  saveReg(){return kvSet(this.REG,JSON.stringify({on:this.on,cur:this.cur,list:this.list,users:this.users}))},
+  async loadAll(){const m={};
+    for(const c of this.list){if(c.id===this.cur){m[c.id]=DB;continue}
+      let raw=await IDB.get(this.key(c.id));if(!raw)try{raw=localStorage.getItem(this.key(c.id))}catch(e){}
+      let d;try{d=normalize(raw?JSON.parse(raw):null)}catch(e){console.error(e);d=normalize(null)}m[c.id]=d}
+    this.dbs=m;if(!this.users.length)this.users=DB.users.slice();
+    for(const id in m)m[id].users=this.users.filter(u=>this.visible(u,id));
+    clearCache()},
+  /* users ki asal list registry mein hai; har company ke DB mein sirf us company ke users hote hain */
+  syncUsers(){if(!this.on||!DB)return;const cur=this.cur,ids=new Set(DB.users.map(u=>u.id));
+    this.users=this.users.filter(r=>ids.has(r.id)||!this.visible(r,cur));
+    DB.users.forEach(u=>{const i=this.users.findIndex(r=>r.id===u.id);if(i<0)this.users.push(u);else this.users[i]=u});
+    DB.users=this.users.filter(r=>this.visible(r,cur))},
+  setCur(id){this.cur=id;DB=this.dbs[id];DB_KEY=this.key(id);DB.users=this.users.filter(u=>this.visible(u,id));clearCache();
+    if(ME){const m=this.users.find(u=>u.id===ME.id);if(m)ME=m}this.saveReg()},
+  enter(user){const a=this.allowed(user);if(!a.length)return false;if(!a.some(c=>c.id===this.cur))this.setCur(a[0].id);return true},
+  async switchTo(id){if(!this.on||id===this.cur||!this.dbs[id])return;
+    save(true);await PENDING;this.setCur(id);closeModal();applyBranding();buildNav();
+    const m=CUR&&canSee(CUR)?CUR:'dashboard';go(m);toast('Company: '+this.name(id))},
+  async enable(){if(this.on)return;this.on=true;if(!this.list.length)this.list=[{id:'main'}];this.cur='main';DB_KEY=LS_KEY;
+    this.dbs.main=DB;this.syncUsers();await this.loadAll();this.saveReg();if(ME){applyBranding();buildNav()}},
+  disable(){if(!this.on)return;save(true);this.on=false;
+    if(this.cur!=='main'&&this.dbs.main){DB=this.dbs.main;DB_KEY=LS_KEY;this.cur='main';DB.users=this.users.filter(u=>this.visible(u,'main'));clearCache()}
+    this.saveReg();if(ME){const m=DB.users.find(u=>u.id===ME.id);if(m)ME=m;applyBranding();buildNav();render()}},
+  async add(name){name=String(name||'').trim();if(!name)throw new Error('Company ka naam likhein.');
+    if(this.list.some(c=>this.name(c.id).toLowerCase()===name.toLowerCase()))throw new Error('Is naam ki company pehle se hai.');
+    const id='c'+Date.now().toString(36);const d=normalize(null);
+    d.settings=JSON.parse(JSON.stringify(DB.settings));
+    Object.assign(d.settings,{companyName:name,logo:'',principalLogo:'',letterhead:'',principalName:'',phone:'',address:'',email:'',ntn:''});
+    const ini=name.split(/\s+/).map(w=>w[0]||'').join('').replace(/[^A-Za-z0-9]/g,'').toUpperCase().slice(0,4)||'C';
+    d.settings.invoicePrefix=ini+'-INV-';d.settings.purchasePrefix=ini+'-PUR-';
+    this.users=this.users.slice();d.users=this.users.filter(u=>this.visible(u,id));
+    this.list.push({id});this.dbs[id]=d;
+    await kvSet(this.key(id),JSON.stringify(d));await this.saveReg();return id},
+  withCo(id,fn){const keep=DB;DB=this.dbs[id];clearCache();try{return fn()}finally{DB=keep;clearCache()}},
+  async restoreBundle(d){const dbs={};for(const c of d.mc.list)dbs[c.id]=normalize(d.dbs[c.id]||null);
+    this.on=true;this.list=d.mc.list;this.users=d.mc.users||[];this.cur=this.list.some(c=>c.id===d.mc.cur)?d.mc.cur:'main';this.dbs=dbs;DB=dbs[this.cur];DB_KEY=this.key(this.cur);
+    for(const id in dbs){dbs[id].users=this.users.filter(u=>this.visible(u,id));dbs[id].meta.updated=Date.now();await kvSet(this.key(id),JSON.stringify(dbs[id]))}
+    await this.saveReg();clearCache()}
+};
+const mcOn=()=>CO.on;
+function backupObj(){if(!CO.on||CO.list.length<2)return DB;return{meta:{app:'fatimatech-erp',mcBundle:true,created:DB.meta.created,updated:Date.now()},mc:{cur:CO.cur,list:CO.list,users:CO.users},dbs:CO.dbs}}
+function mcHeader(){const sl=document.getElementById('coSel');if(!sl)return;const l=CO.on&&ME?CO.allowed(ME):[];
+  if(l.length<2){sl.hidden=true;return}
+  sl.innerHTML=l.map(c=>`<option value="${esc(c.id)}"${c.id===CO.cur?' selected':''}>🏢 ${esc(CO.name(c.id))}</option>`).join('');sl.hidden=false;sl.onchange=()=>CO.switchTo(sl.value)}
 const BC=('BroadcastChannel' in window)?new BroadcastChannel('fatimatech_erp'):null;
 async function loadDB(){
-  await IDB.open();let raw=await IDB.get(LS_KEY);let migrate=false;
-  if(!raw){raw=localStorage.getItem(LS_KEY);migrate=!!raw&&!!IDB.db}
+  await IDB.open();await CO.loadReg();DB_KEY=CO.on?CO.key(CO.cur):LS_KEY;let raw=await IDB.get(DB_KEY);let migrate=false;
+  if(!raw){raw=localStorage.getItem(DB_KEY);migrate=!!raw&&!!IDB.db}
   try{DB=normalize(raw?JSON.parse(raw):null)}catch(e){console.error(e);DB=freshDB()}
   if(migrate)persist();
+  if(CO.on){try{await CO.loadAll()}catch(e){console.error(e)}}
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
 function persist(){
   const txt=JSON.stringify(DB);
-  const lsWrite=()=>{try{localStorage.setItem(LS_KEY,txt)}catch(e){toast('Data was not saved: storage is full. Download a backup immediately.',true);console.error(e)}};
-  PENDING=IDB.db?IDB.set(LS_KEY,txt).then(()=>{try{localStorage.removeItem(LS_KEY)}catch(e){}}).catch(e=>{console.error(e);lsWrite()}):Promise.resolve(lsWrite());
-  PENDING.then(()=>{try{BC&&BC.postMessage({updated:DB.meta.updated})}catch(e){}});
+  const lsWrite=()=>{try{localStorage.setItem(DB_KEY,txt)}catch(e){toast('Data was not saved: storage is full. Download a backup immediately.',true);console.error(e)}};
+  PENDING=IDB.db?IDB.set(DB_KEY,txt).then(()=>{try{localStorage.removeItem(DB_KEY)}catch(e){}}).catch(e=>{console.error(e);lsWrite()}):Promise.resolve(lsWrite());
+  PENDING.then(()=>{try{BC&&BC.postMessage({updated:DB.meta.updated,co:CO.cur})}catch(e){}});
+  if(CO.on)CO.saveReg();
   return PENDING;
 }
 function save(silentSync){
-  DB.meta.updated=Date.now();clearCache();persist();
+  DB.meta.updated=Date.now();clearCache();CO.syncUsers();persist();
   if(!silentSync)Cloud.push();
 }
 const S=()=>DB.settings;
@@ -1216,6 +1278,8 @@ const isAdmin=()=>ME&&(ME.role==='admin'||ME.role==='developer');
 function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
+  if(mid==='companies'||mid==='masterSheet')return CO.on&&isAdmin();
+  if(mid==='smhisab')return isAdmin()||ME.role==='kpo'||!!(ME.perms&&ME.perms.includes(mid));
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
   if(mid==='storeReports')return ME.role==='storemanager'||isDev();
@@ -1248,15 +1312,16 @@ function loginCheck(u,p,devOnly){
   if(!DB||!Array.isArray(DB.users))return 'System is still loading. Please wait a moment and try again.';
   u=String(u||'').trim().toLowerCase();
   if(!u||!p)return 'Please enter both username and password.';
-  const user=DB.users.find(x=>String(x.username||'').trim().toLowerCase()===u);
-  if(user&&!user.pass&&(user.role==='developer')===!!devOnly){setTimeout(firstRunSetup,50);return 'First-time setup is needed. Please set the passwords in the window that opened.'}
+  const user=(CO.on?CO.users:DB.users).find(x=>String(x.username||'').trim().toLowerCase()===u);
+  if(user&&!user.pass&&(user.role==='developer')===!!devOnly){if(!devOnly){setTimeout(()=>newDeviceLogin(u,p),50);return 'Is device par pehli baar hai. Jo window khuli hai us mein Client code daal kar login karein.'}setTimeout(firstRunSetup,50);return 'First-time setup is needed. Please set the passwords in the window that opened.'}
   if(!user||(user.role==='developer')!==!!devOnly||!verifyPass(u,p,user.pass))return 'Username or password is incorrect.';
   if(!String(user.pass).startsWith('s1$'))user.pass=hashPass(u,p);
   if(user.active===false||NO_LOGIN.includes(user.role))return 'This account is disabled for login. Please contact the admin.';
+  if(CO.on&&user.role!=='developer'&&!CO.allowed(user).length)return 'Is user ko kisi company ka access nahi diya gaya. Admin se rabta karein.';
   return user}
 function loginFinish(user,btn){
   try{
-    ME=user;try{sessionStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Session storage unavailable; continuing with in-memory login.',storageErr)}try{localStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Persistent session storage is full; continuing without persistent login.',storageErr)}
+    if(CO.on)CO.enter(user);ME=user;try{sessionStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Session storage unavailable; continuing with in-memory login.',storageErr)}try{localStorage.setItem(SESSION_KEY,user.id)}catch(storageErr){console.warn('Persistent session storage is full; continuing without persistent login.',storageErr)}
     $('#lp').value='';$('#loginErr').textContent='';
     if(btn){btn.disabled=true;btn.textContent='Signing in…'}
     attendancePunchIn(user);log('Login','Login',user.username);save(true);
@@ -1331,13 +1396,50 @@ function firstRunSetup(){
      set.forEach(([u,un,pw])=>{u.username=un;u.pass=hashPass(un,pw);u.mustChange=false});
      save(true);closeModal();toast('Setup saved. You can sign in now.')}}]);
   const fm=(t,k)=>{const m=$('#frMsg');if(m){m.textContent=t;m.className='msg small '+(k||'')}};
-  $('#frFile').onclick=()=>pickFile('.json').then(async f=>{if(!f)return;try{const d=JSON.parse(await f.text());setupRestore(d,'backup file')}catch(e){fm(e.message,'err')}});
+  $('#frFile').onclick=()=>pickFile('.json').then(async f=>{if(!f)return;try{const d=JSON.parse(await f.text());await setupRestore(d,'backup file')}catch(e){fm(e.message,'err')}});
   $('#frCloud').onclick=async()=>{const b=$('#frCloud');b.disabled=true;fm('Cloud se backup la raha hai… (thora waqt lag sakta hai)');
-    try{const r=await cloudRestore(V('frCode'));setupRestore(r.d,'cloud backup '+fmtDate(r.b.date))}catch(e){fm(e.message+(e.http===403?' — Rules update / Publish check karein.':''),'err')}finally{b.disabled=false}};
+    try{const r=await cloudRestore(V('frCode'));await setupRestore(r.d,'cloud backup '+fmtDate(r.b.date))}catch(e){fm(e.message+(e.http===403?' — Rules update / Publish check karein.':''),'err')}finally{b.disabled=false}};
+}
+/* Naye device par pehli baar: Client code + username + password. Cloud ke aakhri backup se credentials (sirf hash) check hote hain,
+   theek hon to data + users khud restore ho jate hain aur login ho jata hai. Developer / admin password nahi poochha jata. */
+let ND_FAILS=0,ND_LOCK=0;
+async function newDeviceLogin(u0,p0){
+  try{await Orders.init()}catch(e){}
+  if(!FS.hasCfg)return firstRunSetup();
+  if(document.getElementById('ndC'))return;
+  modal('Is device par pehli baar login',`<p class="small muted">Is laptop par abhi data nahi hai. Internet chalu rakhein. Apna <b>Client code</b>, username aur password daalein. Data khud wapas aa jayega.</p>
+   <div class="grid">${F('Client code',inp('ndC',FS.code||'','text','autocapitalize="characters" spellcheck="false" placeholder="NX-XXXXXXXXXX"'),'wide')}${F('Username',inp('ndU',u0||'','text','autocapitalize="none" spellcheck="false" autocomplete="off"'))}${F('Password',inp('ndP',p0||'','password','autocomplete="off"'))}</div>
+   <p class="msg small" id="ndMsg"></p>
+   <div class="row mt"><button class="btn sm" id="ndDev">Developer / bilkul naya setup (pehli dafa)</button></div>`,
+   [{t:'Login',pri:1,fn:async()=>{
+     const m=(t,k)=>{const e=$('#ndMsg');if(e){e.textContent=t;e.className='msg small '+(k||'')}};
+     if(Date.now()<ND_LOCK)return m('Bahut zyada ghalat koshishen. Thori der baad dobara try karein.','err');
+     const un=V('ndU').trim().toLowerCase(),pw=$('#ndP').value;
+     if(!un||!pw)return m('Username aur password dono likhein.','err');
+     const prev=FS.code;
+     try{
+       m('Cloud se check ho raha hai… (thora waqt lag sakta hai)');
+       const r=await cloudRestore(V('ndC'));
+       const pool=r.d&&r.d.meta&&r.d.meta.mcBundle&&r.d.mc?(r.d.mc.users||[]):((r.d&&r.d.users)||[]);
+       const user=pool.find(x=>String(x.username||'').trim().toLowerCase()===un);
+       if(!user||user.role==='developer'||user.active===false||NO_LOGIN.includes(user.role)||!verifyPass(un,pw,user.pass)){
+         await FS.setCode(prev||'');
+         if(++ND_FAILS>=5){ND_FAILS=0;ND_LOCK=Date.now()+60000}
+         return m('Username ya password ghalat hai (ya is code par ye user nahi).','err')}
+       ND_FAILS=0;
+       await setupRestore(r.d,'cloud backup '+fmtDate(r.b.date));
+       const nu=(CO.on?CO.users:DB.users).find(x=>x.id===user.id);
+       if(!nu)return;
+       if(CO.on&&!CO.enter(nu)){return toast('Is user ko kisi company ka access nahi.',true)}
+       loginFinish(nu,null);
+     }catch(e){m(e.message+(e.http===403?' — Rules update / Publish check karein.':''),'err')}}}]);
+  $('#ndDev').onclick=()=>{closeModal();firstRunSetup()};
+  setTimeout(()=>{const e=$(u0?'#ndC':'#ndC');e&&e.focus()},60);
 }
 /* naye laptop par pehli baar: purana data (users + passwords samet) wapas lana */
-function setupRestore(d,src){
+async function setupRestore(d,src){
   if(!d||d.meta?.app!=='fatimatech-erp')throw new Error('Yeh is system ki backup file nahi hai.');
+  if(d.meta.mcBundle&&d.mc&&d.dbs){await CO.restoreBundle(d);ME=null;save(true);closeModal();applyBranding();toast('Data restore ho gaya ('+src+', saari companies). Ab purane username / password se login karein.');return}
   DB=normalize(d);DB.meta.updated=Date.now();ME=null;save(true);closeModal();applyBranding();
   toast('Data restore ho gaya ('+src+'). Ab purane username / password se login karein.')}
 async function cloudRestore(code){
@@ -1946,11 +2048,16 @@ function applyBranding(){
    $('#niRows').innerHTML=rows.map(r=>`<div><b>${esc(r[0])}:</b> ${esc(r[1])}</div>`).join('');
    {const g=$('#nlGraph');if(g)g.innerHTML=loginSalesGraph()}$('#nlInfo').style.display=(s.companyName||s.appName||rows.length)?'':'none';
   }
-  $('#sideName').textContent=s.companyName||s.appName;$('#sideTag').textContent=s.tagline||'';
+  $('#sideName').textContent=s.companyName||s.appName;$('#sideTag').textContent=s.tagline||'';mcHeader();
 }
 const NAV_GROUPS_OPEN={};
+/* Order booking / POS ek hi jagah: upar tabs se live orders aur mobile inbox bhi yahin se khulte hain */
+function orderTabs(cur){
+  const t=[['pos','🛒 Naya order'],['invoices','📄 Sales invoices'],['liveOrders','📡 Booker orders (live)'],['mobileInbox','📱 Mobile inbox (APK)']].filter(([id])=>canSee(id));
+  return t.length>1?`<div class="tabs">${t.map(([id,l])=>`<button type="button" data-go="${id}" class="${id===cur?'on':''}">${l}</button>`).join('')}</div>`:'';
+}
 function buildNav(){
-  const groups={};MODULES.filter(m=>canSee(m.id)).forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
+  const groups={};MODULES.filter(m=>canSee(m.id)&&!m.hideNav).forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
   const activeModule=MODULES.find(m=>m.id===CUR);const activeGroup=activeModule&&activeModule.group;
   Object.keys(groups).forEach(g=>{if(!(g in NAV_GROUPS_OPEN))NAV_GROUPS_OPEN[g]=g===activeGroup;});
   // Keep the active screen's group open after navigation; other groups remain user-toggleable.
@@ -2097,7 +2204,7 @@ VIEWS.pos=el=>{
   const ed=POS.editId?byId('invoices',POS.editId):null;
   if(!ed&&invLimitReached()){el.innerHTML=`<div class="card"><h3>Invoice limit reached</h3><p>${invUsed()} / ${N(LIC().limit)||200} invoices used. New invoices cannot be created until the full version is purchased.</p><div class="row mt"><button class="btn pri" id="posBuy">📞 Contact developer to purchase</button></div></div>`;$('#posBuy').onclick=showBuyDialog;return}
   const shops=visibleShops();if(ed&&!shops.some(x=>x.id===ed.shopId)){const x=byId('shops',ed.shopId);if(x)shops.unshift(x)}const bookers=usersByRole('booker');const sms=usersByRole('supplyman');
-  el.innerHTML=`<div class="card"><h3>${ed?'Invoice edit: '+esc(ed.no):'New order'}<span class="sp"></span>${ed?'<button class="btn sm bad" id="posCancelEdit">Cancel edit</button>':''}</h3>
+  el.innerHTML=`${orderTabs('pos')}<div class="card"><h3>${ed?'Invoice edit: '+esc(ed.no):'New order'}<span class="sp"></span>${ed?'<button class="btn sm bad" id="posCancelEdit">Cancel edit</button>':''}</h3>
    <div class="note hidden" id="pLock" style="border-color:var(--bad);margin-bottom:10px"></div>
    <div class="grid">
     ${F('Order date',inp('pDate',ed?ed.date:today(),'date'))}
@@ -2305,7 +2412,7 @@ const FS={cfg:null,custom:false,code:'',auth:null,tok:null,noAuth:false,
   un(d){const o={};for(const k in d.fields||{}){const v=d.fields[k];o[k]=v.stringValue!==undefined?v.stringValue:v.integerValue!==undefined?+v.integerValue:v.doubleValue!==undefined?v.doubleValue:v.booleanValue}return o},
   /* PATCH bina updateMask = poora document set (naya ya overwrite); ID = UUID, is liye duplicate mumkin nahi */
   putOrder(o,sig){
-    const d={uuid:o.uuid,bookerId:o.bookerId,bookerName:o.bookerName,date:o.date,no:o.no,shopId:o.shopId||'',shopName:o.shopName,route:o.route||'',payType:o.payType,net:o.net,itemCount:o.itemCount,status:'synced',createdAtMs:o.createdAtMs,updatedAtMs:o.updatedAtMs,syncedAtMs:Date.now(),payload:o.payload||''};
+    const d={uuid:o.uuid,bookerId:o.bookerId,bookerName:o.bookerName,date:o.date,no:o.no,shopId:o.shopId||'',shopName:o.shopName,route:o.route||'',payType:o.payType,net:o.net,itemCount:o.itemCount,status:'synced',createdAtMs:o.createdAtMs,updatedAtMs:o.updatedAtMs,syncedAtMs:Date.now(),co:o.co||'',payload:o.payload||''};
     return this.req(this.root()+'/orders/'+encodeURIComponent(o.uuid),{method:'PATCH',body:this.doc(d)},sig)},
   /* Day End document sirf ek baar ban sakta hai (create-only); dobara aaye to "pehle se band" = kamyab */
   async putDayEnd(d,sig){
@@ -2347,7 +2454,7 @@ const Orders={map:new Map(),days:new Map(),ready:false,syncing:false,last:null,p
   guardLock(date){if(ME&&ME.role==='booker'&&date&&this.lockedOn(ME.id,date)){toast('Is date ('+fmtDate(date)+') ka Day End ho chuka hai — naya order, edit ya delete nahi ho sakta.',true);return false}return true},
   async queue(iv){
     const old=this.map.get(iv.id);
-    const o={uuid:iv.id,bookerId:iv.bookerId,bookerName:iv.bookerName,date:iv.date,no:iv.no,shopId:iv.shopId,shopName:iv.shopName,route:iv.route||'',payType:iv.payType,net:N(iv.net),itemCount:iv.items.length,createdAtMs:old?old.createdAtMs:Date.now(),updatedAtMs:Date.now(),status:'pending',payload:JSON.stringify(iv)};
+    const o={uuid:iv.id,bookerId:iv.bookerId,bookerName:iv.bookerName,date:iv.date,no:iv.no,shopId:iv.shopId,shopName:iv.shopName,route:iv.route||'',payType:iv.payType,net:N(iv.net),itemCount:iv.items.length,createdAtMs:old?old.createdAtMs:Date.now(),updatedAtMs:Date.now(),status:'pending',co:CO.on?CO.cur:'',payload:JSON.stringify(iv)};
     this.map.set(o.uuid,o);NetBar.update();
     try{await ODB.put('orders',o)}catch(e){console.error(e);toast('Order phone ki storage mein save nahi hua: '+e.message,true);return}
     this.upload(o.uuid)},                    // background: foran koshish, kisi ko block nahi karta
@@ -2467,23 +2574,36 @@ function askDayEnd(date){
 
 /* ---------- ADMIN: live booker orders ---------- */
 let LV={date:'',booker:'',q:''};
+/* live order -> Sales invoice (wohi import jo Mobile inbox mein hai) */
+function lvRow(x){let p=null;try{p=JSON.parse(x.payload)}catch(e){}
+  return p&&p.items&&x.uuid?{id:x.uuid,kind:'order',by:x.bookerName||'',date:x.date||'',at:N(x.createdAtMs),summary:(x.no||'')+' '+(x.shopName||''),amount:N(x.net),p}:null}
+function lvInv(x){const r=lvRow(x);if(!r)return'—';
+  if(miDone(r)){const iv=DB.invoices.find(i=>i.id===x.uuid);return badge('Sales invoice ✓'+(iv?' '+iv.no:''),'ok')}
+  return`<button class="btn sm pri" data-lvi="${esc(x.uuid)}">⬇️ Invoice banayein</button>`}
+function lvList(){const q=LV.q.toLowerCase();return Live.orders.filter(x=>(!CO.on||(x.co||'main')===CO.cur)&&(!LV.date||x.date===LV.date)&&(!LV.booker||x.bookerId===LV.booker)&&(!q||[x.no,x.shopName,x.bookerName].join(' ').toLowerCase().includes(q)))}
 function drawLive(){
   const o=$('#lvOut');if(!o)return;
-  const q=LV.q.toLowerCase();let l=Live.orders.filter(x=>(!LV.date||x.date===LV.date)&&(!LV.booker||x.bookerId===LV.booker)&&(!q||[x.no,x.shopName,x.bookerName].join(' ').toLowerCase().includes(q)));
+  const q=LV.q.toLowerCase();let l=Live.orders.filter(x=>(!CO.on||(x.co||'main')===CO.cur)&&(!LV.date||x.date===LV.date)&&(!LV.booker||x.bookerId===LV.booker)&&(!q||[x.no,x.shopName,x.bookerName].join(' ').toLowerCase().includes(q)));
   const st=$('#lvState');if(st)st.innerHTML=Live.state==='live'?badge(Live.cache?'Offline (purana data)':'🟢 Live',Live.cache?'warn':'ok'):Live.state==='error'?badge('Error: '+Live.err,'bad'):badge('Connect ho raha hai…','warn');
-  o.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Order #'},{t:'Shop'},{t:'Items',n:1},{t:'Net',n:1},{t:'Synced'},{t:''}],l.map(x=>[fmtDate(x.date),esc(x.bookerName),esc(x.no),esc(x.shopName),x.itemCount,fmt(x.net),clockOf(x.syncedAtMs),x.payload?`<button class="btn sm" data-lv="${esc(x.uuid)}">👁</button>`:'']),l.length?['',l.length+' orders','','','',fmt(sum(l,x=>x.net)),'','']:null);
+  o.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Order #'},{t:'Shop'},{t:'Items',n:1},{t:'Net',n:1},{t:'Synced'},{t:'Sales invoice'},{t:''}],l.map(x=>[fmtDate(x.date),esc(x.bookerName),esc(x.no),esc(x.shopName),x.itemCount,fmt(x.net),clockOf(x.syncedAtMs),lvInv(x),x.payload?`<button class="btn sm" data-lv="${esc(x.uuid)}">👁</button>`:'']),l.length?['',l.length+' orders','','','',fmt(sum(l,x=>x.net)),'','','']:null);
   $$('#lvOut [data-lv]').forEach(b=>b.onclick=()=>{const x=Live.orders.find(z=>z.uuid===b.dataset.lv);let iv={};try{iv=JSON.parse(x.payload)}catch(e){}
     modal('Order '+x.no,`<p><b>${esc(x.shopName)}</b> • ${esc(x.bookerName)} • ${fmtDate(x.date)}</p>${table([{t:'Item'},{t:'Qty'},{t:'Rate',n:1},{t:'Total',n:1}],(iv.items||[]).map(i=>[esc(i.name),splitPcs({packing:i.packing},i.pcs),fmt(i.rate),fmt(i.gross-i.disc)]))}<p class="small muted">UUID: ${esc(x.uuid)}</p>`)});
+  $$('#lvOut [data-lvi]').forEach(b=>b.onclick=()=>{const x=Live.orders.find(z=>z.uuid===b.dataset.lvi),r=x&&lvRow(x);if(!r||miDone(r))return;
+    try{const ref=miApply(r);save();toast('Invoice '+ref+' ban gaya, Sales invoices mein hai.');drawLive()}catch(e){toast(e.message,true)}});
   const d=$('#lvDays');if(d)d.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Band hua'},{t:'Orders',n:1},{t:'Total',n:1}],Live.days.filter(x=>!LV.booker||x.bookerId===LV.booker).map(x=>[fmtDate(x.date),esc(x.bookerName),new Date(x.closedAtMs).toLocaleString(),x.orderCount,fmt(x.total)]));
 }
 VIEWS.liveOrders=el=>{
   if(!FS.ok){el.innerHTML=`<div class="card"><h3>Booker orders (live)</h3><p>Firestore abhi configure nahi hai. Developer se Firebase config save karwayein.</p>${isDev()?'<div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div>':''}</div>`;return}
   const bk=DB.users.filter(u=>u.role==='booker');
-  el.innerHTML=`<div class="card"><h3>Booker orders (live)<span class="sp"></span><span id="lvState"></span></h3>
+  el.innerHTML=`${orderTabs('liveOrders')}<div class="card"><h3>Booker orders (live)<span class="sp"></span><span id="lvState"></span> <button class="btn sm pri" id="lvAll">⬇️ Sab nayi orders ke Sales invoice banayein</button></h3>
+    <p class="muted small">Booker ki order yahan aati hai. "Invoice banayein" dabane par wo Sales invoices mein (cash ho ya udhaar) chali jati hai.</p>
     <div class="grid">${F('Date',inp('lvD',LV.date,'date'))}${F('Booker',sel('lvB',bk.map(u=>({v:u.id,t:u.name||u.username})),LV.booker,'Sab bookers'))}${F('Search',inp('lvQ',LV.q,'search','placeholder="Shop, order #"'))}</div>
     <div class="mt" id="lvOut"></div></div>
    <div class="card"><h3>Booker Day End (kis ne kaunsa din band kiya)</h3><div id="lvDays"></div></div>`;
   $('#lvD').oninput=()=>{LV.date=V('lvD');drawLive()};$('#lvB').onchange=()=>{LV.booker=V('lvB');drawLive()};$('#lvQ').oninput=()=>{LV.q=V('lvQ');drawLive()};
+  $('#lvAll').onclick=()=>{const rows=lvList().map(lvRow).filter(r=>r&&!miDone(r)).sort((a,b)=>a.at-b.at);if(!rows.length)return toast('Koi nayi order baqi nahi.');
+    confirmBox(rows.length+' order(s) ke Sales invoice banayein?',()=>{let ok=0;const bad=[];rows.forEach(r=>{try{miApply(r);ok++}catch(e){bad.push((r.summary||r.id)+': '+e.message)}});if(ok)save();
+      toast(ok+' invoice ban gaye.'+(bad.length?' '+bad.length+' nahi ban sake: '+bad[0]:''),!ok&&bad.length>0);drawLive()})};
   drawLive();Live.start();
 };
 
@@ -2501,10 +2621,10 @@ async function miFetch(){
     run({from:[{collectionId:'orders'}],where:{fieldFilter:{field:{fieldPath:'src'},op:'EQUAL',value:{stringValue:'mobile'}}},limit:1000})]);
   const rows=[];
   (a||[]).filter(x=>x.document).forEach(x=>{const o=FS.un(x.document);let p=null;try{p=JSON.parse(o.payload)}catch(e){}
-    if(p&&o.id&&MI_KIND[o.kind])rows.push({id:o.id,kind:o.kind,by:o.byName||'',date:o.date||'',at:N(o.createdAtMs),summary:o.summary||'',amount:N(o.amount),p})});
+    if(p&&o.id&&MI_KIND[o.kind])rows.push({co:o.co||'',id:o.id,kind:o.kind,by:o.byName||'',date:o.date||'',at:N(o.createdAtMs),summary:o.summary||'',amount:N(o.amount),p})});
   (b||[]).filter(x=>x.document).forEach(x=>{const o=FS.un(x.document);let p=null;try{p=JSON.parse(o.payload)}catch(e){}
-    if(p&&p.items&&o.uuid)rows.push({id:o.uuid,kind:'order',by:o.bookerName||'',date:o.date||'',at:N(o.createdAtMs),summary:(o.no||'')+' '+(o.shopName||''),amount:N(o.net),p})});
-  return rows.sort((x,y)=>x.at-y.at);
+    if(p&&p.items&&o.uuid)rows.push({co:o.co||'',id:o.uuid,kind:'order',by:o.bookerName||'',date:o.date||'',at:N(o.createdAtMs),summary:(o.no||'')+' '+(o.shopName||''),amount:N(o.net),p})});
+  return(CO.on?rows.filter(r=>(r.co||'main')===CO.cur):rows).sort((x,y)=>x.at-y.at);
 }
 const miDone=r=>DB.mobileDone&&DB.mobileDone[r.id]||(r.kind==='order'&&DB.invoices.some(i=>i.id===r.id)?{at:'',ref:'Invoice maujood hai'}:null);
 /* kya yeh entry abhi import ho sakti hai? {err} = nahi, {warn} = ho sakti hai magar dhyan dein */
@@ -2568,7 +2688,7 @@ function miDetailHTML(r){
 }
 VIEWS.mobileInbox=el=>{
   if(!FS.ok){el.innerHTML=`<div class="card"><h3>Mobile inbox</h3><p>Firestore abhi configure nahi hai (Client code / Firebase config). Developer se Order sync settings mein save karwayein.</p>${isDev()?'<div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div>':''}</div>`;return}
-  el.innerHTML=`<div class="card"><h3>Mobile inbox (NexaFlow Field)<span class="sp"></span><button class="btn sm" id="miRef">🔄 Refresh</button></h3>
+  el.innerHTML=`${orderTabs('mobileInbox')}<div class="card"><h3>Mobile inbox (NexaFlow Field)<span class="sp"></span><button class="btn sm" id="miRef">🔄 Refresh</button></h3>
     <p class="muted small">Booker / Store Manager ki APK se aayi entries. Import karne par laptop ke records (invoice, recovery, purchase, return, claim, stock) ban jate hain. Recovery "Pending" mein aati hai — Market recovery mein approve karein.</p>
     <div class="grid">${F('Type',sel('miK',Object.entries(MI_KIND).map(([v,t])=>({v,t})),MI.kind,'All'))}${F('Show',sel('miS',[{v:'new',t:'Pending import'},{v:'done',t:'Imported / ignored'}],MI.show))}</div>
     <p class="msg small" id="miMsg"></p><div class="mt" id="miOut"></div></div>`;
@@ -2731,7 +2851,8 @@ const License={st:null,_t:null,
     this._last=Date.now();let ok=false;
     try{
       const d=await withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root(),{method:'GET'},s));const o=FS.un(d);Net.set(true);
-      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),updateTo:String(o.updateTo||''),updateMode:o.updateMode==='manual'?'manual':'auto',updateAll:'',checkedAt:Date.now()};ok=true;
+      this.st={code:FS.code,name:o.name||'',expiryMs:N(o.expiryMs),active:o.active!==false,fee:N(o.fee),updateTo:String(o.updateTo||''),updateMode:o.updateMode==='manual'?'manual':'auto',updateAll:'',multiCompany:o.multiCompany===true,checkedAt:Date.now()};ok=true;
+      try{if(o.multiCompany===true)await CO.enable();else CO.disable()}catch(e){console.error(e)}
       try{const g=await withTimeout(OSYNC.TIMEOUT,s=>FS.req('/config/update',{method:'GET'},s));this.st.updateAll=String(FS.un(g).version||'')}catch(e){}
       if(window.nexaDesktop&&nexaDesktop.version)withTimeout(OSYNC.TIMEOUT,s=>FS.req(FS.root()+'?updateMask.fieldPaths=appVersion&updateMask.fieldPaths=lastSeenMs',{method:'PATCH',body:FS.doc({appVersion:nexaDesktop.version,lastSeenMs:Date.now()})},s)).catch(()=>{});
     }catch(e){
@@ -2836,7 +2957,7 @@ VIEWS.clients=el=>{
     o.innerHTML=table([{t:'Client'},{t:'Code'},{t:'Status'},{t:'Expiry'},{t:'Fee/month',n:1},{t:'Total mili',n:1},{t:'Aakhri payment'},{t:'Version'},{t:'Update mode'},{t:''}],MC.rows.map((c,i)=>{
       const d=c.expiryMs>0?Math.ceil((c.expiryMs-Date.now())/864e5):null;
       const stt=c.active===false?badge('Band','bad'):d!==null&&d<0?badge('Expire','bad'):d!==null&&d<=7?badge(d+' din baqi','warn'):badge('Chalu','ok');
-      return[esc(c.name),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',verCell(c),
+      return[esc(c.name)+(c.multiCompany===true?' <span title="Multi-company">🏢</span>':''),'<code>'+esc(c.code)+'</code>',stt,c.expiryMs>0?fmtDate(dstr(c.expiryMs)):'—',fmt(N(c.fee)),fmt(N(c.paidTotal)),c.lastPaidMs?fmtDate(dstr(c.lastPaidMs)):'—',verCell(c),
         `<select data-um="${i}" style="min-width:96px" title="Auto: nayi version khud lagti hai. Manual: sirf wohi jo aap bhejein; mobile par naya code ruk jata hai.">${opt([{v:'auto',t:'Auto'},{v:'manual',t:'Manual'}],c.updateMode==='manual'?'manual':'auto')}</select>`,
         `<button class="btn sm" data-up="${i}">⬆️ Update</button> <button class="btn sm" data-ed="${i}">Edit</button> <button class="btn sm" data-m1="${i}">💰 +1 mahina</button> <button class="btn sm" data-m12="${i}">+1 saal</button> <button class="btn sm" data-cp="${i}">📋 Code</button>`]}));
     const bind=(attr,fn)=>$$('#mcOut ['+attr+']').forEach(x=>x.onclick=()=>fn(MC.rows[+x.getAttribute(attr)]));
@@ -2849,10 +2970,10 @@ VIEWS.clients=el=>{
     bind('data-cp',c=>{try{navigator.clipboard.writeText(c.code);toast('Code copy ho gaya: '+c.code)}catch(e){toast(c.code)}})};
   const newCode=()=>{const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const r=crypto.getRandomValues(new Uint8Array(10));return'NX-'+Array.from(r,x=>a[x%a.length]).join('')};
   const form=(c)=>{const isNew=!c;c=c||{code:newCode(),name:'',fee:0,active:true,expiryMs:Date.now()+30*864e5,notes:''};
-    modal(isNew?'Naya client':'Client edit',`<div class="grid">${F('Client / company ka naam *',inp('mcN',c.name),'wide')}${F('Client code',inp('mcC',c.code,'text',isNew?'':'disabled'))}${F('Monthly fee',inp('mcF',c.fee,'number'))}${F('Expiry date (is din tak chalega)',inp('mcX',dstr(c.expiryMs),'date'))}${F('Status',sel('mcA',[{v:'1',t:'Chalu'},{v:'0',t:'Band (foran block)'}],c.active===false?'0':'1'))}${F('Note',inp('mcO',c.notes||''),'wide')}</div>${isNew?'<p class="small muted">Yeh code client ke laptop par Developer → Order sync settings mein daalna hai. Code lamba aur random hai taake koi doosra andaza na laga sake.</p>':''}`,
+    modal(isNew?'Naya client':'Client edit',`<div class="grid">${F('Client / company ka naam *',inp('mcN',c.name),'wide')}${F('Client code',inp('mcC',c.code,'text',isNew?'':'disabled'))}${F('Monthly fee',inp('mcF',c.fee,'number'))}${F('Expiry date (is din tak chalega)',inp('mcX',dstr(c.expiryMs),'date'))}${F('Status',sel('mcA',[{v:'1',t:'Chalu'},{v:'0',t:'Band (foran block)'}],c.active===false?'0':'1'))}${F('Multi-company (is client ki kayi companies)',sel('mcM',[{v:'0',t:'Nahi (ek company)'},{v:'1',t:'Haan (kayi companies + master sheet)'}],c.multiCompany===true?'1':'0'))}${F('Note',inp('mcO',c.notes||''),'wide')}</div>${isNew?'<p class="small muted">Yeh code client ke laptop par Developer → Order sync settings mein daalna hai. Code lamba aur random hai taake koi doosra andaza na laga sake.</p>':''}`,
       [{t:'💾 Save',pri:1,fn:async()=>{const name=V('mcN');const code=FS.cleanCode(V('mcC'));if(!name||code.length<6)return toast('Naam aur code (kam az kam 6 harf) zaroori hain.',true);
         const x=V('mcX');const exp=x?new Date(x+'T23:59:59').getTime():0;
-        try{await save(code,{...c,name,fee:N(V('mcF')),expiryMs:exp,active:V('mcA')==='1',notes:V('mcO'),createdAtMs:c.createdAtMs||Date.now()});closeModal();toast('Client save ho gaya.');load()}catch(e){toast(e.message,true)}}}])};
+        try{await save(code,{...c,name,fee:N(V('mcF')),expiryMs:exp,active:V('mcA')==='1',notes:V('mcO'),multiCompany:V('mcM')==='1',createdAtMs:c.createdAtMs||Date.now()});closeModal();toast('Client save ho gaya.');load()}catch(e){toast(e.message,true)}}}])};
   if($('#mcNew'))$('#mcNew').onclick=()=>form();
   if($('#mcUall'))$('#mcUall').onclick=()=>{const v=V('mcUv');if(v&&!Upd.valid(v))return toast('Version aise likhein: 1.1.0',true);
     confirmBox(v?'Sab clients ko v'+v+' ka Update bhejein?':'Sab clients ka update wapas lein?',async()=>{try{await CloudBackup.ownerReq('/config/update',{method:'PATCH',body:FS.doc({version:v,atMs:Date.now()})});toast(v?'Sab ko update bhej diya. Clients ko 5 minute mein (ya app dobara kholne par) Update button dikhega.':'Update wapas le liya.');load()}catch(e){toast(e.message,true)}})};
@@ -2883,7 +3004,7 @@ const CloudBackup={
   async queue(date){
     try{
       await Orders.init();
-      const {enc,data}=await this.gz(JSON.stringify(DB));
+      const {enc,data}=await this.gz(JSON.stringify(backupObj()));
       const dev=await this.deviceId();const host=(window.nexaDesktop&&nexaDesktop.hostname)||'';
       const company=(S().companyName||'NexaFlow').trim();
       const id=company.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_'+date+'_'+Date.now().toString(36);
@@ -3012,7 +3133,7 @@ VIEWS.returns=el=>{
   const shops=visibleShops();const prodOpt=DB.products.filter(isOn).map(p=>({v:p.id,t:p.name}));
   el.innerHTML=`<div class="tabs"><button class="on" data-rt="item">Item return</button><button data-rt="udhaar">Credit stock return</button><button data-rt="cancel">Full invoice cancel</button></div>
   <div class="card" id="rtForm"></div>
-  <div class="card"><h3>Returns record</h3>${table([{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'},{t:'Reason'},{t:''}],DB.returns.slice().reverse().slice(0,300).map(r=>[fmtDate(r.date),r.kind==='udhaar'?'Credit return':'Item return',esc(r.shopName),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash refund':'Balance minus',r.toStock?badge('In stock','ok'):badge('Damaged','warn'),esc(r.reason||''),`<button class="btn sm" data-prt="${r.id}">🖨️</button>${isAdmin()?` <button class="btn sm bad" data-drt="${r.id}">🗑️</button>`:''}`]))}</div>`;
+  <div class="card"><h3>Returns record</h3>${table([{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Supply man'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'},{t:'Reason'},{t:''}],DB.returns.slice().reverse().slice(0,300).map(r=>[fmtDate(r.date),r.kind==='udhaar'?'Credit return':'Item return',esc(r.shopName),esc(r.supplyman||''),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash refund':'Balance minus',r.toStock?badge('In stock','ok'):badge('Damaged','warn'),esc(r.reason||''),`<button class="btn sm" data-prt="${r.id}">🖨️</button>${isAdmin()?` <button class="btn sm bad" data-drt="${r.id}">🗑️</button>`:''}`]))}</div>`;
   const form=k=>{$$('[data-rt]').forEach(b=>b.classList.toggle('on',b.dataset.rt===k));const f=$('#rtForm');
     if(k==='cancel'){f.innerHTML=`<h3>Full invoice cancel / return</h3><div class="grid">${F('Invoice',sel('rcInv',activeInv().slice().reverse().slice(0,500).map(i=>({v:i.id,t:i.no+' — '+i.shopName+' — '+fmt(i.net)})),'','Select'),'wide')}${F('Reason',inp('rcWhy'),'wide')}</div><p class="note mt">Cancelling returns all goods to stock and reduces the shop balance. The record is kept safe.</p><div class="row mt"><button class="btn pri bad" id="rcGo">Cancel invoice</button></div>`;
       $('#rcGo').onclick=()=>{const iv=byId('invoices',V('rcInv'));if(!iv)return toast('Select an invoice.',true);if(!V('rcWhy'))return toast('Enter a reason.',true);if(!guardEdit(iv.date))return;if(invCollected(iv.id)>0&&!confirm('The supply man has already collected cash on this invoice; that record will stay. Cancel the invoice?'))return;
@@ -3023,11 +3144,12 @@ VIEWS.returns=el=>{
       ${k==='item'?F('Settle',sel('rSettle',[{v:'credit',t:'Minus from shop balance'},{v:'cash',t:'Cash refunded'}],'credit')):''}
       ${k==='item'?F('Cash account',sel('rAcc',accOptions(),'acc_cash')):''}
       ${F('Goods condition',sel('rCond',[{v:'1',t:'Good — back to stock'},{v:'0',t:'Damaged / expiry — not to stock'}],'1'))}
+      ${F('Supply man (jis ke saath maal wapas aaya)',sel('rSM',usersByRole('supplyman').map(u=>({v:u.id,t:u.name||u.username})),'','— koi nahi —'))}
       ${F('Reason',inp('rWhy'),'wide')}</div><div class="prod-hint" id="rInfo"></div><div class="row mt"><button class="btn pri" id="rGo">Save return</button></div>`;
     const info=()=>{const sh=byId('shops',V('rShop')),p=byId('products',V('rProd'));if(p&&!V('rRate'))$('#rRate').value=p.tradePc||'';$('#rInfo').innerHTML=(sh?'Shop balance: <b>'+money(shopDue(sh.id))+'</b> ':'')+(p&&N(V('rPcs'))?' • Amount: <b>'+money(N(V('rPcs'))*N(V('rRate')))+'</b>':'')};
     ['rShop','rProd','rPcs','rRate'].forEach(i=>$('#'+i).oninput=info);
     $('#rGo').onclick=()=>{const sh=byId('shops',V('rShop')),p=byId('products',V('rProd'));if(!sh||!p)return toast('Select a shop and a product.',true);const pcs=N(V('rPcs'));if(pcs<=0)return toast('Enter pieces.',true);if(!V('rWhy'))return toast('Enter a reason.',true);if(!guard(V('rDate')))return;
-      const r={id:uid(),kind:k,date:V('rDate'),shopId:sh.id,shopName:sh.name,productId:p.id,productName:p.name,pcs,rate:N(V('rRate')),amount:r2(pcs*N(V('rRate'))),settle:k==='udhaar'?'credit':V('rSettle'),accountId:V('rAcc')||'acc_cash',toStock:V('rCond')==='1',reason:V('rWhy'),by:ME.username};
+      const r={id:uid(),kind:k,date:V('rDate'),shopId:sh.id,shopName:sh.name,productId:p.id,productName:p.name,pcs,rate:N(V('rRate')),amount:r2(pcs*N(V('rRate'))),settle:k==='udhaar'?'credit':V('rSettle'),accountId:V('rAcc')||'acc_cash',toStock:V('rCond')==='1',reason:V('rWhy'),by:ME.username,...(()=>{const u=byId('users',V('rSM'));return u?{smId:u.id,supplyman:u.name||u.username}:{}})()};
       DB.returns.push(r);log('Returns',k==='udhaar'?'Credit stock return':'Item return',sh.name,p.name+' '+pcs+' pcs');save();toast('Return saved.');render()};
   };
   $$('[data-rt]').forEach(b=>b.onclick=()=>form(b.dataset.rt));form('item');
@@ -3035,6 +3157,56 @@ VIEWS.returns=el=>{
   $$('[data-drt]').forEach(b=>b.onclick=()=>guardEdit((byId('returns',b.dataset.drt)||{}).date)&&confirmBox('Delete this return record?',()=>{DB.returns=DB.returns.filter(r=>r.id!==b.dataset.drt);log('Returns','Return deleted',b.dataset.drt);save();render()}));
 };
 
+/* =====================================================================
+   SUPPLY MAN HISAB — supply man print le kar jata hai, wapas aa kar hisab deta hai, admin yahan data darj karta hai.
+   Supply man ko app / login ki zaroorat nahi.
+   ===================================================================== */
+const SH={sm:'',date:'',cdate:''};
+VIEWS.smhisab=el=>{
+  const sms=usersByRole('supplyman');if(!SH.date)SH.date=today();if(!SH.cdate)SH.cdate=today();
+  el.innerHTML=`<div class="card"><h3>Supply man hisab (wapsi par)<span class="sp"></span><button class="btn sm" id="shPrint">🖨️ Print</button></h3>
+   <p class="muted small">Supply man print le kar jata hai aur wapas aa kar hisab deta hai. Yahan us ki bills, wasool hui cash aur wapas aaya maal darj karein. Us ko app ya login nahi chahiye. Supply man Users &amp; access mein "Supply man (no login)" role se banta hai.</p>
+   <div class="grid">${F('Supply man',sel('shSM',sms.map(u=>({v:u.id,t:u.name||u.username})),SH.sm,'Select'))}${F('Bills ki delivery date',inp('shD',SH.date,'date'))}${F('Hisab / cash ki date',inp('shC',SH.cdate,'date'))}</div></div><div id="shOut"></div>`;
+  let pr=null;
+  const draw=()=>{SH.sm=V('shSM');SH.date=V('shD');SH.cdate=V('shC');const o=$('#shOut');pr=null;
+    if(!SH.sm){o.innerHTML='<div class="card"><div class="empty">Pehle supply man chunein.</div></div>';return}
+    const sm=byId('users',SH.sm);const inv=activeInv().filter(i=>i.supplymanId===SH.sm&&i.deliveryDate===SH.date);
+    const cashB=sum(inv.filter(i=>i.payType==='cash'),i=>i.net),credB=sum(inv.filter(i=>i.payType!=='cash'),i=>i.net);
+    const col=DB.collections.filter(c=>c.smId===SH.sm&&c.date===SH.cdate),colT=sum(col,c=>c.amount);
+    const rets=DB.returns.filter(r=>r.smId===SH.sm&&r.date===SH.cdate),retT=sum(rets,r=>r.amount),refund=sum(rets.filter(r=>r.settle==='cash'),r=>r.amount);
+    const expect=cashB+colT-refund;
+    const shopIds=[...new Set(inv.map(i=>i.shopId))];const shopsL=shopIds.map(id=>byId('shops',id)).filter(Boolean);
+    const prodOpt=DB.products.filter(isOn).map(x=>({v:x.id,t:x.name}));
+    const rowsTbl=inv.map(i=>{const due=invDue(i);const credit=i.payType!=='cash';
+      return[esc(i.no),esc(i.shopName),credit?'Udhaar':'Cash',fmt(i.net),fmt(invCollected(i.id)),credit?fmt(due):'—',credit&&due>0?`<input data-sc="${i.id}" type="number" step="0.01" inputmode="decimal" value="${due}" style="width:110px">`:(credit?badge('Wasool ✓','ok'):'')]});
+    o.innerHTML=`<div class="kpis"><div class="kpi"><small>Bills</small><b>${inv.length}</b></div><div class="kpi"><small>Kul bill value</small><b>${money(cashB+credB)}</b></div><div class="kpi"><small>Cash bills</small><b>${money(cashB)}</b></div><div class="kpi"><small>Udhaar bills</small><b>${money(credB)}</b></div><div class="kpi"><small>Udhaar se wasool (is date)</small><b>${money(colT)}</b></div><div class="kpi"><small>Wapas aaya maal</small><b>${money(retT)}</b></div><div class="kpi"><small>Supply man se cash milni chahiye</small><b>${money(expect)}</b></div></div>
+    <div class="card"><h3>Bills (${esc(sm?sm.name||sm.username:'')} — ${fmtDate(SH.date)})</h3>${inv.length?table([{t:'Inv #'},{t:'Shop'},{t:'Type'},{t:'Bill',n:1},{t:'Wasool',n:1},{t:'Baqi',n:1},{t:'Cash mili'}],rowsTbl):'<div class="empty">Is date par is supply man ko koi bill assign nahi. Picklist ya invoice mein supply man chunein.</div>'}
+     ${inv.some(i=>i.payType!=='cash'&&invDue(i)>0)?'<div class="row end mt"><button class="btn pri" id="shSave">💾 Cash save karein</button></div><p class="small muted">Jitni cash supply man ne di wo likhein (khali ya 0 chorein to save nahi hogi). Baqi udhaar shop ke hisab mein rehta hai.</p>':''}</div>
+    <div class="card"><h3>Wapas aaya maal (returns) — ${fmtDate(SH.cdate)}</h3>${rets.length?table([{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Stock'}],rets.map(r=>[esc(r.shopName),esc(r.productName),r.pcs,fmt(r.amount),r.settle==='cash'?'Cash wapas':'Balance se minus',r.toStock?'Stock mein':'Kharab'])):'<div class="empty">Abhi koi return darj nahi.</div>'}
+     <h4 class="mt">Naya return darj karein</h4><div class="grid">${F('Shop',sel('shRS',(shopsL.length?shopsL:visibleShops()).map(x=>({v:x.id,t:shopLabel(x)})),'','Select'),'full-m')}${F('Product',sel('shRP',prodOpt,'','Select'),'full-m')}${F('Pieces',inp('shRQ','','number'))}${F('Rate / pc',inp('shRR','','number','step="0.01"'))}
+      ${F('Settle',sel('shRT',[{v:'credit',t:'Shop ke balance se minus'},{v:'cash',t:'Cash wapas'}],'credit'))}${F('Maal ki halat',sel('shRC',[{v:'1',t:'Theek — stock mein wapas'},{v:'0',t:'Kharab / expiry'}],'1'))}</div>
+     <div class="row mt"><button class="btn" id="shRet">+ Return save karein</button></div></div>`;
+    const sh=$('#shSave');
+    if(sh)sh.onclick=()=>{if(!guard(SH.cdate))return;let n=0,tot=0;const bad=[];
+      $$('#shOut [data-sc]').forEach(inpEl=>{const a=N(inpEl.value);if(!(a>0))return;const iv=byId('invoices',inpEl.dataset.sc);if(!iv)return;
+        if(a>invDue(iv)+0.01){bad.push(iv.no);return}
+        DB.collections.push({id:uid(),date:SH.cdate,invoiceId:iv.id,invoiceNo:iv.no,shopId:iv.shopId,shopName:iv.shopName,smId:SH.sm,supplyman:sm?sm.name||sm.username:'',bill:invDue(iv),amount:a,accountId:'acc_cash',remarks:'Supply man hisab',by:ME.username});
+        iv.deliveredAt=nowStamp();n++;tot+=a;clearCache()});
+      if(bad.length)return toast('Ye bills ki cash baqi se zyada hai: '+bad.join(', '),true);
+      if(!n)return toast('Koi cash nahi likhi.',true);
+      log('Recovery','Supply man hisab',sm?sm.name||sm.username:'',n+' bills '+money(tot));save();toast(n+' bills ki cash ('+money(tot)+') save ho gayi.');render()};
+    const pI=()=>{const x=byId('products',V('shRP'));if(x&&!V('shRR'))$('#shRR').value=x.tradePc||''};$('#shRP').onchange=pI;
+    $('#shRet').onclick=()=>{const shp=byId('shops',V('shRS')),pd=byId('products',V('shRP')),q=N(V('shRQ'));
+      if(!shp||!pd)return toast('Shop aur product chunein.',true);if(q<=0)return toast('Pieces likhein.',true);if(!guard(SH.cdate))return;
+      DB.returns.push({id:uid(),kind:'item',date:SH.cdate,shopId:shp.id,shopName:shp.name,productId:pd.id,productName:pd.name,pcs:q,rate:N(V('shRR'))||N(pd.tradePc),amount:r2(q*(N(V('shRR'))||N(pd.tradePc))),settle:V('shRT'),accountId:'acc_cash',toStock:V('shRC')==='1',reason:'Delivery par wapas ('+(sm?sm.name||sm.username:'')+')',by:ME.username,smId:SH.sm,supplyman:sm?sm.name||sm.username:''});
+      clearCache();log('Returns','Supply man return',shp.name,pd.name+' '+q+' pcs');save();toast('Return darj ho gaya.');render()};
+    pr={title:'Supply man hisab: '+(sm?sm.name||sm.username:''),sub:'Delivery '+fmtDate(SH.date)+' • Hisab '+fmtDate(SH.cdate),
+      body:`<table class="kv"><tr><td>Kul bill value</td><td>${money(cashB+credB)}</td></tr><tr><td>Cash bills</td><td>${money(cashB)}</td></tr><tr><td>Udhaar bills</td><td>${money(credB)}</td></tr><tr><td>Udhaar se wasool</td><td>${money(colT)}</td></tr><tr><td>Wapas aaya maal</td><td>${money(retT)}</td></tr><tr><td><b>Supply man se cash milni chahiye</b></td><td><b>${money(expect)}</b></td></tr></table>`+tableHTMLPrint([{t:'Inv #'},{t:'Shop'},{t:'Type'},{t:'Bill',n:1},{t:'Wasool',n:1},{t:'Baqi',n:1}],inv.map(i=>[i.no,i.shopName,i.payType==='cash'?'Cash':'Udhaar',fmt(i.net),fmt(invCollected(i.id)),i.payType==='cash'?'—':fmt(invDue(i))]))};
+  };
+  $('#shSM').onchange=draw;$('#shD').oninput=draw;$('#shC').oninput=draw;
+  $('#shPrint').onclick=()=>{if(!pr)return toast('Pehle supply man chunein.',true);printDoc('report',pr.body,{title:pr.title,sub:pr.sub})};
+  draw();
+};
 /* ---------- COMPANY CLAIMS ---------- */
 VIEWS.claims=el=>{
   el.innerHTML=`<div class="card"><h3>Claim to company (damage / expiry)</h3><div class="grid">
@@ -3635,13 +3807,15 @@ function userEditor(u,dev){
   const perms=u.perms&&u.perms.length?u.perms:ROLE_DEFAULTS[u.role]||[];
   modal(n?'New user':'Edit user: '+u.username,`<div class="grid">${F('Full name',inp('euN',u.name))}${F('Username (login; auto for no-login roles)',inp('euU',u.username,'text','autocapitalize="none"'+(n?'':' readonly')))}
    ${F(n?'Password':'New password (leave blank to keep the current one)',inp('euP','','text'))}${F('Role',sel('euR',roles,u.role))}${F('Phone',inp('euPh',u.phone||''))}${F('Status',sel('euA',[{v:'1',t:'Active'},{v:'0',t:'Disabled'}],u.active===false?'0':'1'))}
+   ${mcOn()?`<div class="wide" style="grid-column:1/-1"><label>Company access (booker / delivery boy / store manager / baqi staff)</label><div class="row" id="euCo"><label class="chip"><input type="checkbox" id="euCoAll" ${(u.companies&&u.companies.length)?'':'checked'}> 🌐 Sab companies (same user)</label>${CO.list.map(c=>`<label class="chip"><input type="checkbox" value="${esc(c.id)}" ${(u.companies||[]).includes(c.id)?'checked':''}> ${esc(CO.name(c.id))}</label>`).join('')}</div><p class="small muted">"Sab companies" ticked ho to ye user har company mein nazar aayega. Warna sirf chuni hui companies mein.</p></div>`:''}
    ${F('Linked booker (supply man ka booker)',sel('euBk',usersByRole('booker').map(b=>({v:b.id,t:b.name||b.username})),u.bookerId||'','— Select booker —'))}</div>
    <h4 class="mt">Screens allowed</h4><div class="row" id="euPerms">${MODULES.filter(m=>!m.devOnly).map(m=>`<label class="chip"><input type="checkbox" value="${m.id}" ${perms.includes(m.id)?'checked':''}> ${m.icon} ${esc(m.label)}</label>`).join('')}</div>
    <div class="row mt"><button class="btn sm" id="euDef">Default permissions of role</button></div>`,
    [...(!n&&u.id!==ME.id?[{t:'Delete',bad:1,fn:()=>confirmBox('Delete this user? (The name will stay in old records.)',()=>{DB.users=DB.users.filter(x=>x.id!==u.id);log('Users','User deleted',u.username);save();render()})}]:[]),
     {t:'Save',pri:1,fn:()=>{const nl=NO_LOGIN.includes(V('euR'));let un=V('euU').toLowerCase().replace(/\s+/g,'');if(!un&&n&&nl){const base=V('euN').toLowerCase().replace(/[^a-z0-9]/g,'')||V('euR');un=base;let k=1;while(DB.users.some(x=>x.username.toLowerCase()===un))un=base+(++k)}if(!un||!V('euN'))return toast('Enter name and username.',true);if(V('euR')==='supplyman'&&!V('euBk'))return toast('Select the booker this supply man is linked to.',true);
      if(n&&DB.users.some(x=>x.username.toLowerCase()===un))return toast('This username already exists.',true);if(n&&!nl&&V('euP').length<4)return toast('Password must be at least 4 characters.',true);
-     Object.assign(u,{name:V('euN'),role:V('euR'),phone:V('euPh'),active:V('euA')==='1',bookerId:V('euBk'),perms:$$('#euPerms input:checked').map(c=>c.value)});
+     let coSel=u.companies||[];if(mcOn()&&$('#euCoAll')){coSel=$('#euCoAll').checked?[]:$$('#euCo input[value]:checked').map(c=>c.value);if(!$('#euCoAll').checked&&!coSel.length)return toast('Kam az kam ek company chunein ya "Sab companies" tick karein.',true)}
+     Object.assign(u,{name:V('euN'),role:V('euR'),phone:V('euPh'),active:V('euA')==='1',bookerId:V('euBk'),perms:$$('#euPerms input:checked').map(c=>c.value),companies:coSel});
      if(n){u.id=uid();u.username=un;u.mustChange=true;DB.users.push(u)}if(V('euP'))u.pass=hashPass(u.username,V('euP'));
      log('Users',n?'User added':'User edited',u.username);save();closeModal();render();toast('User saved.')}}]);
   const euToggle=()=>{const role=V('euR'),nl=NO_LOGIN.includes(role);$('#euBk').closest('div').classList.toggle('hidden',role!=='supplyman');['euP','euU'].forEach(i=>{const e=$('#'+i).closest('div');if(e)e.classList.toggle('hidden',nl&&(i==='euP'||n))});const pe=$('#euPerms');if(pe){pe.previousElementSibling.classList.toggle('hidden',nl);pe.classList.toggle('hidden',nl);$('#euDef').parentElement.classList.toggle('hidden',nl)}};
@@ -3663,10 +3837,48 @@ VIEWS.attendanceLog=el=>{
   $('#apDate').onchange=draw;$('#apUser').onchange=draw;draw();
 };
 
+/* =====================================================================
+   MULTI-COMPANY: Companies + Master sheet
+   ===================================================================== */
+VIEWS.companies=el=>{
+  if(!CO.on){el.innerHTML='<div class="card"><h3>Companies</h3><p class="note">Multi-company is client par on nahi hai. Developer isay Clients (master) mein on kar sakta hai.</p></div>';return}
+  const rows=CO.list.map(c=>{const d=CO.dbs[c.id];return[esc(CO.name(c.id))+(c.id===CO.cur?' '+badge('Abhi khuli','ok'):''),d.invoices.length,d.products.length,d.shops.length,d.users.filter(u=>u.role!=='developer').length,c.id===CO.cur?'':`<button class="btn sm" data-sw="${esc(c.id)}">Is company mein jayein</button>`]});
+  el.innerHTML=`<div class="card"><h3>Companies<span class="sp"></span><button class="btn pri sm" id="coNew">➕ Nayi company</button></h3>
+   ${table([{t:'Company'},{t:'Invoices',n:1},{t:'Products',n:1},{t:'Shops',n:1},{t:'Users',n:1},{t:''}],rows)}
+   <p class="note mt">Har company ka stock, sales, purchase, expenses, investment aur profit alag rehta hai. Upar header ke 🏢 box se company badalte hain. Company ka naam, logo, invoice format us company mein ja kar <b>Developer control</b> se badlein. Sab companies ek saath dekhne ke liye <b>Master sheet</b> kholein. Booker / delivery boy / store manager kis company mein kaam karenge, ye <b>Users &amp; access</b> mein har user ke liye chunein.</p>
+   <div class="row mt"><button class="btn" data-go="masterSheet">📑 Master sheet</button></div></div>`;
+  $$('[data-sw]').forEach(b=>b.onclick=()=>CO.switchTo(b.dataset.sw));
+  $('#coNew').onclick=()=>modal('Nayi company',`<div class="grid">${F('Company ka naam *',inp('coN',''),'wide')}</div><p class="small muted">Nayi company khali data se shuru hoti hai (products, shops, stock sab alag). Sab users jin ka access "Sab companies" hai, is mein bhi nazar aayenge.</p>`,[{t:'Banayein',pri:1,fn:async()=>{try{const id=await CO.add(V('coN'));closeModal();toast('Company ban gayi.');await CO.switchTo(id);go(isDev()?'devpanel':'dashboard')}catch(e){toast(e.message,true)}}}]);
+};
+const MS={f:'',t:''};
+VIEWS.masterSheet=el=>{
+  if(!CO.on){el.innerHTML='<div class="card"><h3>Master sheet</h3><p class="note">Multi-company is client par on nahi hai.</p></div>';return}
+  const m0=today().slice(0,8)+'01';
+  reportBlock(el,{title:'Master sheet — sab companies',printType:'report',
+    filters:F('From',inp('msF',MS.f||m0,'date'))+F('To',inp('msT',MS.t||today(),'date')),
+    build:()=>{
+      const f=V('msF'),t=V('msT');MS.f=f;MS.t=t;
+      const rows=CO.list.map(c=>CO.withCo(c.id,()=>{const p=pnl(f,t);
+        return{name:S().companyName||c.id,count:p.count,sales:p.sales,cogs:p.cogs,gp:p.gp,exp:p.exp,net:p.net,
+          pur:sum(DB.purchases.filter(x=>inRange(x.date,f,t)),x=>N(x.total)),stock:sum(DB.products,pr=>Math.max(0,stockOf(pr.id))*costPerPc(pr.id))}}));
+      const T=k=>sum(rows,r=>r[k]);const pct=(v,tot)=>tot>0?(v/tot*100).toFixed(1)+'%':'—';
+      const tn=T('net');
+      const body=rows.map(r=>[r.name,r.count,r.sales,pct(r.sales,T('sales')),r.cogs,r.gp,pct(r.gp,r.sales),r.exp,r.net,tn>0&&r.net>0?pct(r.net,tn):'—',r.pur,r.stock]);
+      const foot=['TOTAL',T('count'),T('sales'),T('sales')>0?'100%':'—',T('cogs'),T('gp'),pct(T('gp'),T('sales')),T('exp'),tn,'',T('pur'),T('stock')];
+      const cols=[{t:'Company'},{t:'Invoices',n:1},{t:'Net sales',n:1},{t:'Sales %'},{t:'Investment (COGS)',n:1},{t:'Gross profit',n:1},{t:'Margin %'},{t:'Expenses',n:1},{t:'Net profit',n:1},{t:'Profit %'},{t:'Purchases',n:1},{t:'Stock value (cost)',n:1}];
+      const palette=['#3949ab','#1e7a56','#e0a030','#c0392b','#8e44ad','#16a085'];
+      const mx=Math.max(1,...rows.map(r=>Math.max(r.sales,r.cogs,Math.abs(r.net))));
+      const bar=(label,v,color)=>`<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:84px;font-size:12px">${label}</span><div style="flex:1"><div style="height:12px;border-radius:6px;background:${v<0?'#c0392b':color};width:${Math.max(1,Math.abs(v)/mx*100)}%"></div></div><span style="font-size:12px;min-width:110px;text-align:right">${money(v)}</span></div>`;
+      const share=T('sales')>0?`<div style="display:flex;height:22px;border-radius:8px;overflow:hidden;margin:6px 0">${rows.map((r,i)=>r.sales>0?`<div title="${esc(r.name)}" style="width:${r.sales/T('sales')*100}%;background:${palette[i%palette.length]}"></div>`:'').join('')}</div><div class="row small">${rows.map((r,i)=>`<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${palette[i%palette.length]};margin-right:4px"></span>${esc(r.name)} ${pct(r.sales,T('sales'))}</span>`).join('')}</div>`:'<p class="muted">Is muddat mein sales nahi hui.</p>';
+      const html=`<h4 class="mt">Sales ka hissa (%)</h4>${share}<h4 class="mt">Graph (company-wise)</h4>`+rows.map(r=>`<div style="border:1px solid #8883;border-radius:10px;padding:8px 12px;margin:8px 0"><b>${esc(r.name)}</b>${bar('Sales',r.sales,'#3949ab')}${bar('Investment',r.cogs,'#e0a030')}${bar('Net profit',r.net,'#1e7a56')}</div>`).join('');
+      return{cards:[['Total net sales',money(T('sales'))],['Total investment (COGS)',money(T('cogs'))],['Total gross profit',money(T('gp'))],['Total net profit',money(tn)]],html,cols,rows:body,foot,sub:fmtDate(f)+' se '+fmtDate(t)}
+    }});
+};
+
 VIEWS.users=el=>{
   const list=DB.users.filter(u=>u.role!=='developer');
   el.innerHTML=`<div class="card"><h3>Users & access<span class="sp"></span><button class="btn sm pri" id="usNew">+ New user</button></h3>
-   ${table([{t:'Name'},{t:'Username'},{t:'Role'},{t:'Phone'},{t:'Status'},{t:'Screens',n:1},{t:''}],list.map(u=>[esc(u.name),esc(u.username),ROLES[u.role]||u.role,esc(u.phone||''),u.active===false?badge('Disabled','bad'):badge('Active','ok'),(u.perms||ROLE_DEFAULTS[u.role]||[]).length,`<button class="btn sm" data-ue="${u.id}">✏️</button>`]))}
+   ${table([{t:'Name'},{t:'Username'},{t:'Role'},{t:'Phone'},...(mcOn()?[{t:'Company'}]:[]),{t:'Status'},{t:'Screens',n:1},{t:''}],list.map(u=>[esc(u.name),esc(u.username),ROLES[u.role]||u.role,esc(u.phone||''),...(mcOn()?[u.companies&&u.companies.length?esc(u.companies.map(c=>CO.name(c)).join(', ')):'Sab']:[]),u.active===false?badge('Disabled','bad'):badge('Active','ok'),(u.perms||ROLE_DEFAULTS[u.role]||[]).length,`<button class="btn sm" data-ue="${u.id}">✏️</button>`]))}
    <p class="note mt">"Staff (no login)" users are only for salary / advance; they cannot log in.</p></div>`;
   $('#usNew').onclick=()=>userEditor(null);$$('[data-ue]').forEach(b=>b.onclick=()=>userEditor(byId('users',b.dataset.ue)));
 };
@@ -3677,18 +3889,19 @@ VIEWS.users=el=>{
 function downloadJSON(obj,name){const b=new Blob([JSON.stringify(obj,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 const backupName=tag=>(S().companyName||'erp').replace(/[^\w]+/g,'_')+'_'+(tag||'backup')+'_'+today()+'.json';
 function restoreFromFile(){pickFile('.json').then(async f=>{if(!f)return;try{const d=JSON.parse(await f.text());if(!d||d.meta?.app!=='fatimatech-erp')throw new Error('This is not a backup file of this system.');
-  confirmBox('All current data will be replaced by this backup. Are you sure?',()=>{const meId=ME.id;DB=normalize(d);DB.meta.updated=Date.now();ME=DB.users.find(u=>u.id===meId)||DB.users.find(u=>u.role==='developer');log('Backup','Restored',f.name);save();applyBranding();render();toast('Data restored.')})}catch(e){toast(e.message,true)}})}
+  if(d.meta.mcBundle&&d.mc&&d.dbs)return confirmBox('Saari companies ka data is backup se replace hoga. Pakka?',async()=>{const meId=ME.id;await CO.restoreBundle(d);ME=CO.users.find(u=>u.id===meId)||CO.users.find(u=>u.role==='developer');if(!CO.enter(ME)){}log('Backup','Restored (all companies)',f.name);save();applyBranding();buildNav();render();toast('Saari companies restore ho gayin.')});
+  confirmBox('All current data will be replaced by this backup. Are you sure?',()=>{const meId=ME.id;DB=normalize(d);DB.meta.updated=Date.now();if(CO.on){CO.dbs[CO.cur]=DB;DB.users=CO.users.filter(u=>CO.visible(u,CO.cur))}ME=DB.users.find(u=>u.id===meId)||DB.users.find(u=>u.role==='developer');log('Backup','Restored',f.name);save();applyBranding();render();toast('Data restored.')})}catch(e){toast(e.message,true)}})}
 VIEWS.backup=el=>{
   const last=DB.dayEnds[DB.dayEnds.length-1];
-  el.innerHTML=`<div class="grid g2"><div class="card"><h3>Backup & restore</h3><p class="muted">Keep at least one backup daily on a computer or Google Drive. All data is stored in this browser.</p><div class="row"><button class="btn pri" id="bkDl">📥 Full backup download</button><button class="btn" id="bkRs">📤 Restore from backup</button></div><p class="small muted mt" id="bkUse"></p><p class="small muted">Last backup: ${DB.meta.lastBackup?esc(new Date(DB.meta.lastBackup).toLocaleString()):'never'}</p></div>
+  el.innerHTML=`<div class="grid g2"><div class="card"><h3>Backup & restore</h3><p class="muted">Keep at least one backup daily on a computer or Google Drive. All data is stored in this browser.</p><div class="row"><button class="btn pri" id="bkDl">📥 Full backup download</button><button class="btn" id="bkRs">📤 Restore from backup</button></div><p class="small muted mt" id="bkUse"></p>${FS.code?`<p class="note mt">🔑 Aap ka <b>Client code</b> (naye laptop par pehli baar login ke liye ye + username + password chahiye): <b><code>${esc(FS.code)}</code></b></p>`:''}<p class="small muted">Last backup: ${DB.meta.lastBackup?esc(new Date(DB.meta.lastBackup).toLocaleString()):'never'}</p></div>
    <div class="card"><h3>Day end (close the day)</h3><div class="grid">${F('Business date',inp('deD',dayEndOverdue()?addDays(today(),-1):today(),'date'))}${F('Note',inp('deN'))}</div><p class="small muted mt">${last?'Last day end: '+fmtDate(last.date)+' — '+esc(last.by):'No day end yet.'}</p><p class="small muted">After day end, new entries are allowed only after that date. Entries on or before it can be edited or deleted by admin only. Only the developer can reopen an earlier date.</p>${DB.meta.reopen?`<div class="note" style="border-color:#e0b25a;background:#fdf6e7">🔓 Developer reopened <b>${fmtDate(DB.meta.reopen.from)}</b> onwards (was closed up to ${fmtDate(DB.meta.reopen.prevClosed)}). Make the missing entries within 24 hours (by ${esc(new Date(N(DB.meta.reopen.until)).toLocaleString())}), then do Day End again for <b>${fmtDate(DB.meta.reopen.prevClosed)}</b> or later. Reason: ${esc(DB.meta.reopen.reason)}</div>`:''}${DB.meta.pendingBackup?`<div class="note" style="border-color:#d9534f">⛔ Backup after Day End (${fmtDate(DB.meta.pendingBackup)}) is not confirmed. New entries are blocked until you take the backup.</div>`:''}<div class="row mt"><button class="btn pri" id="deGo">🔒 Day end + backup</button>${last&&isDev()?'<button class="btn bad" id="deOpen">🔓 Move day end back (developer)</button>':''}</div></div></div>
    <div class="card"><h3>Day end history</h3>${table([{t:'Date'},{t:'By'},{t:'Time'},{t:'Sales',n:1},{t:'Recovery',n:1},{t:'Expenses',n:1},{t:'Cash + bank',n:1},{t:'Note'}],DB.dayEnds.slice().reverse().map(d=>[fmtDate(d.date),esc(d.by),esc(d.at),fmt(d.sales),fmt(d.recovery),fmt(d.exp),fmt(d.cash),esc(d.note||'')]))}</div>`;
-  $('#bkDl').onclick=()=>{DB.meta.lastBackup=Date.now();delete DB.meta.pendingBackup;downloadJSON(DB,backupName());log('Backup','Downloaded');save(true);render()};
+  $('#bkDl').onclick=()=>{DB.meta.lastBackup=Date.now();delete DB.meta.pendingBackup;downloadJSON(backupObj(),backupName());log('Backup','Downloaded');save(true);render()};
   if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(e=>{const u=$('#bkUse');if(u)u.textContent='Data size: '+fmt(JSON.stringify(DB).length/1048576)+' MB • Browser storage used: '+fmt((e.usage||0)/1048576)+' MB / '+fmt((e.quota||0)/1048576)+' MB'});$('#bkRs').onclick=restoreFromFile;
   $('#deGo').onclick=()=>{const d=V('deD');if(d>today())return toast('Day end cannot be done for a future date.',true);if(d<=lastClosed())return toast('Day end is already done up to '+fmtDate(lastClosed())+'.',true);const ro=DB.meta.reopen;if(ro&&d<ro.prevClosed)return toast('The developer reopened this period. Day end must be done for '+fmtDate(ro.prevClosed)+' or later.',true);const p=pnl(d,d);
     DB.meta.lastBackup=Date.now();DB.dayEnds.push({id:uid(),date:d,by:ME.username,at:nowStamp(),sales:p.sales,recovery:sum(approvedRec().filter(r=>(r.approvedDate||r.date)===d),r=>r.amount)+sum(DB.collections.filter(c=>c.date===d),c=>c.amount),exp:p.exp,cash:sum(DB.accounts,a=>accountBalance(a.id,d)),note:V('deN')});
     log('Backup','Day end',d);if(ro)delete DB.meta.reopen;DB.meta.pendingBackup=d;save(true);CloudBackup.queue(d);
-    const dl=()=>{DB.meta.lastBackup=Date.now();downloadJSON(DB,backupName('dayend_'+d))};dl();
+    const dl=()=>{DB.meta.lastBackup=Date.now();downloadJSON(backupObj(),backupName('dayend_'+d))};dl();
     const ok=()=>{if(confirm('Day end done for '+fmtDate(d)+'. Has the backup file downloaded and been saved? OK = yes, Cancel = download it again.')){delete DB.meta.pendingBackup;log('Backup','Day end backup confirmed',d);save();toast('Day end complete, backup saved.');render()}else{dl();setTimeout(ok,800)}};setTimeout(ok,800);render()};
   if($('#deOpen'))$('#deOpen').onclick=()=>{const l=DB.dayEnds.reduce((m,x)=>!m||x.date>m.date?x:m,null);modal('Move day end back',`<p>Last day end is <b>${fmtDate(l.date)}</b>. Choose the first date to open again; the day end moves to the day before it, so the admin can enter or change entries from that date onwards. The admin must then do Day End again (up to ${fmtDate(l.date)} or later) and take the backup. A backup of the current data is downloaded now.</p>${F('Open from date',inp('deFrom',l.date,'date','max="'+l.date+'"'))}${F('Reason',inp('deWhy'))}`,[{t:'Move day end back',bad:1,fn:()=>{const f=V('deFrom');if(!f||f>l.date)return toast('Choose a date on or before '+fmtDate(l.date)+'.',true);if(!V('deWhy'))return toast('Enter a reason.',true);
       DB.meta.lastBackup=Date.now();downloadJSON(DB,backupName('before_reopen_'+f));
@@ -3821,7 +4034,7 @@ const DEV_TABS={
    <div class="card"><h3>Reset (dangerous)</h3><p class="muted">Take a backup first.</p><div class="row"><button class="btn bad" id="dfAct">Clear activity log</button><button class="btn bad" id="dfTx">Clear all transactions (products, shops, users stay)</button><button class="btn bad" id="dfAll">Factory reset (everything)</button></div></div></div>`;
   $('#dfEx').onclick=()=>downloadJSON({app:'fatimatech-erp-format',settings:{...S(),firebase:{enabled:false,config:'',path:''}}},'format_'+(S().companyName||'erp').replace(/[^\w]+/g,'_')+'.json');
   $('#dfIm').onclick=async()=>{const f=await pickFile('.json');if(!f)return;try{const d=JSON.parse(await f.text());if(d.app!=='fatimatech-erp-format')throw new Error('This is not a settings (format) file.');const fb=S().firebase;DB.settings=deepMerge(defaultSettings(),d.settings);DB.settings.print=deepMerge(defaultPrint(),d.settings.print||{});DB.settings.firebase=fb;log('Developer','Format imported',f.name);save();applyBranding();toast('Format applied.');renderDev()}catch(e){toast(e.message,true)}};
-  $('#dfBk').onclick=()=>{DB.meta.lastBackup=Date.now();save(true);downloadJSON(DB,backupName())};$('#dfRs').onclick=restoreFromFile;
+  $('#dfBk').onclick=()=>{DB.meta.lastBackup=Date.now();save(true);downloadJSON(backupObj(),backupName())};$('#dfRs').onclick=restoreFromFile;
   $('#dfAct').onclick=()=>confirmBox('Clear the activity log?',()=>{DB.activity=[];log('Developer','Activity log reset');save();toast('Cleared.')});
   $('#dfTx').onclick=()=>confirmBox('Invoices, purchases, recovery, returns, expenses, salary and investors will all be erased. Products, shops, users and settings will stay. Are you sure?',()=>{downloadJSON(DB,backupName('before_reset'));['invoices','purchases','supplierPayments','recoveries','collections','returns','claims','expenses','transfers','staffAdv','salaries','investorTxns','dayEnds','picklists'].forEach(k=>DB[k]=[]);DB.attendance={};DB.counters={inv:0,pur:0,clm:0,pick:0};DB.meta.invMade=0;DB.products.forEach(p=>p.openingPcs=0);DB.shops.forEach(s=>s.opening=0);log('Developer','Transactions reset');save();toast('Transactions cleared. A backup was downloaded first.')});
   $('#dfAll').onclick=()=>confirmBox('EVERYTHING will be erased (settings too). Only the developer login returns to default. Are you sure?',()=>{downloadJSON(DB,backupName('before_factory_reset'));DB=freshDB();save();logout()})}]
@@ -3849,10 +4062,11 @@ VIEWS.devpanel=el=>{if(!isDev()){el.innerHTML='';return}
   $('#loginBtn').onclick=doLogin;$('#loginReset').onclick=resetPasswordDialog;$('#lp').onkeydown=e=>{if(e.key==='Enter')doLogin()};$('#lu').onkeydown=e=>{if(e.key==='Enter')$('#lp').focus()};
   $('#lpToggle').onclick=()=>{const p=$('#lp');p.type=p.type==='password'?'text':'password';$('#lpToggle').textContent=p.type==='password'?'Show':'Hide'};
   $('#mClose').onclick=closeModal;$('#modalBg').onclick=e=>{if(e.target.id==='modalBg')closeModal()};
-  const sid=localStorage.getItem(SESSION_KEY);const u=sid&&DB.users.find(x=>x.id===sid&&x.active!==false);
-  if(u){ME=u;startApp()}else{$('#lu').focus();if(DB.users.some(x=>!x.pass&&(x.role==='developer'||x.role==='admin')))setTimeout(firstRunSetup,200)}
+  const sid=localStorage.getItem(SESSION_KEY);let u=sid&&(CO.on?CO.users:DB.users).find(x=>x.id===sid&&x.active!==false);
+  if(u&&CO.on&&!CO.enter(u))u=null;
+  if(u){ME=u;startApp()}else{$('#lu').focus();if(DB.users.some(x=>!x.pass&&(x.role==='developer'||x.role==='admin')))setTimeout(()=>newDeviceLogin(),200)}
   Cloud.init();
-  if(BC)BC.onmessage=async e=>{if(!e.data||N(e.data.updated)<=N(DB.meta.updated))return;const raw=await IDB.get(LS_KEY)||localStorage.getItem(LS_KEY);if(!raw)return;DB=normalize(JSON.parse(raw));clearCache();if(ME){ME=DB.users.find(x=>x.id===ME.id)||ME;applyBranding();deferRender()}};
+  if(BC)BC.onmessage=async e=>{if(!e.data||(e.data.co||'main')!==CO.cur||N(e.data.updated)<=N(DB.meta.updated))return;const raw=await IDB.get(DB_KEY)||localStorage.getItem(DB_KEY);if(!raw)return;DB=normalize(JSON.parse(raw));if(CO.on){CO.dbs[CO.cur]=DB;DB.users=CO.users.filter(u=>CO.visible(u,CO.cur))}clearCache();if(ME){ME=DB.users.find(x=>x.id===ME.id)||ME;applyBranding();deferRender()}};
   tickClock();setInterval(tickClock,1000);setInterval(liveRefresh,30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveRefresh()});
 })();

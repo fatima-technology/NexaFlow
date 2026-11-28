@@ -52,6 +52,31 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Pehli baar (ek hi martaba):** nayi `.exe` manually install karni hai (Actions → Release Windows exe se banne wale Release se `NexaFlow Setup x.y.z.exe`). Ye app ka local data alag jagah rakhta hai, isliye purane exe ka data **backup file** (Backup & day end) ya **Cloud restore** (pehli screen) se wapas laayein. Uske baad kabhi dobara install nahi karna, sirf Update button.
 - Browser mein (developer) website hamesha live version dikhati hai.
 
+## Multi-company (ek client, 3-4 companies) + Master sheet
+- **On kaise karein:** Developer login → Clients (master) → us client ki row **Edit** → "Multi-company" = **Haan** → Save. Baqi clients par kuch nahi badalta. Client ka app agli license check par (ya dobara kholne par) feature on kar leta hai.
+- Har company ka **apna alag data** hota hai: products/stock, shops, sales, purchases, expenses, investment, profit, invoice numbers, naam/logo/print format. Pehli company wohi purana data hai (kuch nahi mitta).
+- Header mein 🏢 box se company badalte hain. Menu **Companies** (Admin/Developer) se nayi company banti hai.
+- **Users:** Users & access mein har user (booker, delivery boy / supply man, store manager, KPO...) ke liye "Company access": **Sab companies (same user)** ya sirf chuni hui companies. Admin ke ikhtiyar mein. Login ek hi hota hai; user ko sirf apni companies nazar aati hain.
+- **Master sheet (Reports → Master sheet):** muddat chun kar sab companies ek jagah: sales value aur %, investment (COGS), gross profit, margin, expenses, net profit, purchases, stock value, total, graph, Print / Excel / PDF.
+- **Backup:** Day End / Backup file mein saari companies ek saath jati hain; restore par saari wapas aati hain. Booker orders (cloud) company ke tag ke saath jate hain; Booker Day End lock booker + date par hota hai (company-wise nahi).
+- Android APK (Field) abhi sirf pehli (main) company ke saath chalti hai.
+
+## Naye device par login (developer ke baghair)
+- Naye laptop par .exe kholne par (ya pehla login try karne par) window aati hai: **Client code + username + password**. App cloud ke aakhri Day End backup se password ka *hash* check karti hai (plain password kahin save nahi hota). Theek ho to data aur users khud wapas aate hain aur login ho jata hai. Developer / admin password nahi poochha jata.
+- Admin apna Client code **Backup & day end** screen par dekh sakta hai. Client ko bas code + username + password dena hai.
+- Shart: us client ka kam az kam ek cloud backup (Day End) bana hona chahiye, aur naye users / password ki tabdeeli aakhri Day End backup tak cloud mein pahunchti hai.
+- Bilkul naye client (jis ka backup nahi) ke liye window mein "Developer / bilkul naya setup" ka button hai, ya developer logo (5 click) se login.
+
+## Order screens ek jagah (Sales menu)
+- Sales menu mein ab sirf **Order booking / POS** hai. Booker ho ya Admin, order yahin punch hota hai. Upar tabs: **Naya order**, **Sales invoices**, **Booker orders (live)**, **Mobile inbox (APK)** (aakhri do sirf Admin/Developer ko).
+- Invoice banne par (cash ho ya udhaar) wo seedha **Sales invoices** mein hota hai.
+- Booker orders (live) mein har order ke saamne **Invoice banayein** (ya upar "Sab nayi orders ke Sales invoice banayein") hai: order Sales invoices mein chali jati hai (stock/udhaar khud update). Jo pehle se invoice ban chuki ho wahan "Sales invoice ✓" dikhta hai.
+
+## Supply man (bina app / login) — "Supply man hisab"
+- Supply man ko app ya login nahi chahiye. Users & access mein role **Supply man (no login)** se sirf naam banta hai.
+- Flow: invoice / picklist mein supply man chunein → print le kar supply man jata hai → wapas aa kar hisab deta hai → Admin (ya KPO) **Recovery → Supply man hisab** kholta hai.
+- Is screen par: us supply man ki bills (cash / udhaar), har udhaar bill ki mili hui cash likh kar **Cash save karein** (Supply man collection mein darj hoti hai), wapas aaya maal **Return save karein** (Returns mein supply man ke naam se), aur upar **"Supply man se cash milni chahiye"** (cash bills + udhaar se wasool − cash wapas) dikhta hai. Print ka button bhi hai.
+
 ## NexaFlow Field — Android app (Order Booker + Store Manager)
 Alag APK (`mobile/` folder, Capacitor). **Laptop / Windows app mein koi tabdeeli nahi hui** — woh pehle jaisi chalti hai.
 - **Login:** ek hi app; username/password se role ke hisaab se screens khulti hain (laptop par jo Booker / Store Manager users banaye hain wahi).
