@@ -67,6 +67,11 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - Shart: us client ka kam az kam ek cloud backup (Day End) bana hona chahiye, aur naye users / password ki tabdeeli aakhri Day End backup tak cloud mein pahunchti hai.
 - Bilkul naye client (jis ka backup nahi) ke liye window mein "Developer / bilkul naya setup" ka button hai, ya developer logo (5 click) se login.
 
+## Order screens ek jagah (Sales menu)
+- Sales menu mein ab sirf **Order booking / POS** hai. Booker ho ya Admin, order yahin punch hota hai. Upar tabs: **Naya order**, **Sales invoices**, **Booker orders (live)**, **Mobile inbox (APK)** (aakhri do sirf Admin/Developer ko).
+- Invoice banne par (cash ho ya udhaar) wo seedha **Sales invoices** mein hota hai.
+- Booker orders (live) mein har order ke saamne **Invoice banayein** (ya upar "Sab nayi orders ke Sales invoice banayein") hai: order Sales invoices mein chali jati hai (stock/udhaar khud update). Jo pehle se invoice ban chuki ho wahan "Sales invoice ✓" dikhta hai.
+
 ## NexaFlow Field — Android app (Order Booker + Store Manager)
 Alag APK (`mobile/` folder, Capacitor). **Laptop / Windows app mein koi tabdeeli nahi hui** — woh pehle jaisi chalti hai.
 - **Login:** ek hi app; username/password se role ke hisaab se screens khulti hain (laptop par jo Booker / Store Manager users banaye hain wahi).

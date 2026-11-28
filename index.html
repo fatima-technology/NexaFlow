@@ -1095,8 +1095,8 @@ const MODULES=[
   {id:'dashboard',label:'Dashboard',icon:'📊',group:'Main'},
   {id:'pos',label:'Order booking / POS',icon:'🛒',group:'Sales'},
   {id:'orderSync',label:'Sync & Day End',icon:'🔄',group:'Sales'},
-  {id:'liveOrders',label:'Booker orders (live)',icon:'📡',group:'Sales'},
-  {id:'mobileInbox',label:'Mobile inbox (APK)',icon:'📱',group:'Sales'},
+  {id:'liveOrders',label:'Booker orders (live)',icon:'📡',group:'Sales',hideNav:true},
+  {id:'mobileInbox',label:'Mobile inbox (APK)',icon:'📱',group:'Sales',hideNav:true},
   {id:'invoices',label:'Sales invoices',icon:'📄',group:'Sales'},
   {id:'delivery',label:'Delivery dates',icon:'📅',group:'Sales'},
   {id:'picklist',label:'Picklist / load sheet',icon:'🚚',group:'Sales'},
@@ -2049,8 +2049,13 @@ function applyBranding(){
   $('#sideName').textContent=s.companyName||s.appName;$('#sideTag').textContent=s.tagline||'';mcHeader();
 }
 const NAV_GROUPS_OPEN={};
+/* Order booking / POS ek hi jagah: upar tabs se live orders aur mobile inbox bhi yahin se khulte hain */
+function orderTabs(cur){
+  const t=[['pos','🛒 Naya order'],['invoices','📄 Sales invoices'],['liveOrders','📡 Booker orders (live)'],['mobileInbox','📱 Mobile inbox (APK)']].filter(([id])=>canSee(id));
+  return t.length>1?`<div class="tabs">${t.map(([id,l])=>`<button type="button" data-go="${id}" class="${id===cur?'on':''}">${l}</button>`).join('')}</div>`:'';
+}
 function buildNav(){
-  const groups={};MODULES.filter(m=>canSee(m.id)).forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
+  const groups={};MODULES.filter(m=>canSee(m.id)&&!m.hideNav).forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
   const activeModule=MODULES.find(m=>m.id===CUR);const activeGroup=activeModule&&activeModule.group;
   Object.keys(groups).forEach(g=>{if(!(g in NAV_GROUPS_OPEN))NAV_GROUPS_OPEN[g]=g===activeGroup;});
   // Keep the active screen's group open after navigation; other groups remain user-toggleable.
@@ -2197,7 +2202,7 @@ VIEWS.pos=el=>{
   const ed=POS.editId?byId('invoices',POS.editId):null;
   if(!ed&&invLimitReached()){el.innerHTML=`<div class="card"><h3>Invoice limit reached</h3><p>${invUsed()} / ${N(LIC().limit)||200} invoices used. New invoices cannot be created until the full version is purchased.</p><div class="row mt"><button class="btn pri" id="posBuy">📞 Contact developer to purchase</button></div></div>`;$('#posBuy').onclick=showBuyDialog;return}
   const shops=visibleShops();if(ed&&!shops.some(x=>x.id===ed.shopId)){const x=byId('shops',ed.shopId);if(x)shops.unshift(x)}const bookers=usersByRole('booker');const sms=usersByRole('supplyman');
-  el.innerHTML=`<div class="card"><h3>${ed?'Invoice edit: '+esc(ed.no):'New order'}<span class="sp"></span>${ed?'<button class="btn sm bad" id="posCancelEdit">Cancel edit</button>':''}</h3>
+  el.innerHTML=`${orderTabs('pos')}<div class="card"><h3>${ed?'Invoice edit: '+esc(ed.no):'New order'}<span class="sp"></span>${ed?'<button class="btn sm bad" id="posCancelEdit">Cancel edit</button>':''}</h3>
    <div class="note hidden" id="pLock" style="border-color:var(--bad);margin-bottom:10px"></div>
    <div class="grid">
     ${F('Order date',inp('pDate',ed?ed.date:today(),'date'))}
@@ -2567,23 +2572,36 @@ function askDayEnd(date){
 
 /* ---------- ADMIN: live booker orders ---------- */
 let LV={date:'',booker:'',q:''};
+/* live order -> Sales invoice (wohi import jo Mobile inbox mein hai) */
+function lvRow(x){let p=null;try{p=JSON.parse(x.payload)}catch(e){}
+  return p&&p.items&&x.uuid?{id:x.uuid,kind:'order',by:x.bookerName||'',date:x.date||'',at:N(x.createdAtMs),summary:(x.no||'')+' '+(x.shopName||''),amount:N(x.net),p}:null}
+function lvInv(x){const r=lvRow(x);if(!r)return'—';
+  if(miDone(r)){const iv=DB.invoices.find(i=>i.id===x.uuid);return badge('Sales invoice ✓'+(iv?' '+iv.no:''),'ok')}
+  return`<button class="btn sm pri" data-lvi="${esc(x.uuid)}">⬇️ Invoice banayein</button>`}
+function lvList(){const q=LV.q.toLowerCase();return Live.orders.filter(x=>(!CO.on||(x.co||'main')===CO.cur)&&(!LV.date||x.date===LV.date)&&(!LV.booker||x.bookerId===LV.booker)&&(!q||[x.no,x.shopName,x.bookerName].join(' ').toLowerCase().includes(q)))}
 function drawLive(){
   const o=$('#lvOut');if(!o)return;
   const q=LV.q.toLowerCase();let l=Live.orders.filter(x=>(!CO.on||(x.co||'main')===CO.cur)&&(!LV.date||x.date===LV.date)&&(!LV.booker||x.bookerId===LV.booker)&&(!q||[x.no,x.shopName,x.bookerName].join(' ').toLowerCase().includes(q)));
   const st=$('#lvState');if(st)st.innerHTML=Live.state==='live'?badge(Live.cache?'Offline (purana data)':'🟢 Live',Live.cache?'warn':'ok'):Live.state==='error'?badge('Error: '+Live.err,'bad'):badge('Connect ho raha hai…','warn');
-  o.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Order #'},{t:'Shop'},{t:'Items',n:1},{t:'Net',n:1},{t:'Synced'},{t:''}],l.map(x=>[fmtDate(x.date),esc(x.bookerName),esc(x.no),esc(x.shopName),x.itemCount,fmt(x.net),clockOf(x.syncedAtMs),x.payload?`<button class="btn sm" data-lv="${esc(x.uuid)}">👁</button>`:'']),l.length?['',l.length+' orders','','','',fmt(sum(l,x=>x.net)),'','']:null);
+  o.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Order #'},{t:'Shop'},{t:'Items',n:1},{t:'Net',n:1},{t:'Synced'},{t:'Sales invoice'},{t:''}],l.map(x=>[fmtDate(x.date),esc(x.bookerName),esc(x.no),esc(x.shopName),x.itemCount,fmt(x.net),clockOf(x.syncedAtMs),lvInv(x),x.payload?`<button class="btn sm" data-lv="${esc(x.uuid)}">👁</button>`:'']),l.length?['',l.length+' orders','','','',fmt(sum(l,x=>x.net)),'','','']:null);
   $$('#lvOut [data-lv]').forEach(b=>b.onclick=()=>{const x=Live.orders.find(z=>z.uuid===b.dataset.lv);let iv={};try{iv=JSON.parse(x.payload)}catch(e){}
     modal('Order '+x.no,`<p><b>${esc(x.shopName)}</b> • ${esc(x.bookerName)} • ${fmtDate(x.date)}</p>${table([{t:'Item'},{t:'Qty'},{t:'Rate',n:1},{t:'Total',n:1}],(iv.items||[]).map(i=>[esc(i.name),splitPcs({packing:i.packing},i.pcs),fmt(i.rate),fmt(i.gross-i.disc)]))}<p class="small muted">UUID: ${esc(x.uuid)}</p>`)});
+  $$('#lvOut [data-lvi]').forEach(b=>b.onclick=()=>{const x=Live.orders.find(z=>z.uuid===b.dataset.lvi),r=x&&lvRow(x);if(!r||miDone(r))return;
+    try{const ref=miApply(r);save();toast('Invoice '+ref+' ban gaya, Sales invoices mein hai.');drawLive()}catch(e){toast(e.message,true)}});
   const d=$('#lvDays');if(d)d.innerHTML=table([{t:'Date'},{t:'Booker'},{t:'Band hua'},{t:'Orders',n:1},{t:'Total',n:1}],Live.days.filter(x=>!LV.booker||x.bookerId===LV.booker).map(x=>[fmtDate(x.date),esc(x.bookerName),new Date(x.closedAtMs).toLocaleString(),x.orderCount,fmt(x.total)]));
 }
 VIEWS.liveOrders=el=>{
   if(!FS.ok){el.innerHTML=`<div class="card"><h3>Booker orders (live)</h3><p>Firestore abhi configure nahi hai. Developer se Firebase config save karwayein.</p>${isDev()?'<div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div>':''}</div>`;return}
   const bk=DB.users.filter(u=>u.role==='booker');
-  el.innerHTML=`<div class="card"><h3>Booker orders (live)<span class="sp"></span><span id="lvState"></span></h3>
+  el.innerHTML=`${orderTabs('liveOrders')}<div class="card"><h3>Booker orders (live)<span class="sp"></span><span id="lvState"></span> <button class="btn sm pri" id="lvAll">⬇️ Sab nayi orders ke Sales invoice banayein</button></h3>
+    <p class="muted small">Booker ki order yahan aati hai. "Invoice banayein" dabane par wo Sales invoices mein (cash ho ya udhaar) chali jati hai.</p>
     <div class="grid">${F('Date',inp('lvD',LV.date,'date'))}${F('Booker',sel('lvB',bk.map(u=>({v:u.id,t:u.name||u.username})),LV.booker,'Sab bookers'))}${F('Search',inp('lvQ',LV.q,'search','placeholder="Shop, order #"'))}</div>
     <div class="mt" id="lvOut"></div></div>
    <div class="card"><h3>Booker Day End (kis ne kaunsa din band kiya)</h3><div id="lvDays"></div></div>`;
   $('#lvD').oninput=()=>{LV.date=V('lvD');drawLive()};$('#lvB').onchange=()=>{LV.booker=V('lvB');drawLive()};$('#lvQ').oninput=()=>{LV.q=V('lvQ');drawLive()};
+  $('#lvAll').onclick=()=>{const rows=lvList().map(lvRow).filter(r=>r&&!miDone(r)).sort((a,b)=>a.at-b.at);if(!rows.length)return toast('Koi nayi order baqi nahi.');
+    confirmBox(rows.length+' order(s) ke Sales invoice banayein?',()=>{let ok=0;const bad=[];rows.forEach(r=>{try{miApply(r);ok++}catch(e){bad.push((r.summary||r.id)+': '+e.message)}});if(ok)save();
+      toast(ok+' invoice ban gaye.'+(bad.length?' '+bad.length+' nahi ban sake: '+bad[0]:''),!ok&&bad.length>0);drawLive()})};
   drawLive();Live.start();
 };
 
@@ -2668,7 +2686,7 @@ function miDetailHTML(r){
 }
 VIEWS.mobileInbox=el=>{
   if(!FS.ok){el.innerHTML=`<div class="card"><h3>Mobile inbox</h3><p>Firestore abhi configure nahi hai (Client code / Firebase config). Developer se Order sync settings mein save karwayein.</p>${isDev()?'<div class="row mt"><button class="btn pri" data-go="fsSettings">☁️ Order sync settings</button></div>':''}</div>`;return}
-  el.innerHTML=`<div class="card"><h3>Mobile inbox (NexaFlow Field)<span class="sp"></span><button class="btn sm" id="miRef">🔄 Refresh</button></h3>
+  el.innerHTML=`${orderTabs('mobileInbox')}<div class="card"><h3>Mobile inbox (NexaFlow Field)<span class="sp"></span><button class="btn sm" id="miRef">🔄 Refresh</button></h3>
     <p class="muted small">Booker / Store Manager ki APK se aayi entries. Import karne par laptop ke records (invoice, recovery, purchase, return, claim, stock) ban jate hain. Recovery "Pending" mein aati hai — Market recovery mein approve karein.</p>
     <div class="grid">${F('Type',sel('miK',Object.entries(MI_KIND).map(([v,t])=>({v,t})),MI.kind,'All'))}${F('Show',sel('miS',[{v:'new',t:'Pending import'},{v:'done',t:'Imported / ignored'}],MI.show))}</div>
     <p class="msg small" id="miMsg"></p><div class="mt" id="miOut"></div></div>`;
