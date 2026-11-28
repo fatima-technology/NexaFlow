@@ -1110,16 +1110,20 @@ const MODULES=[
   {id:'smhisab',label:'Supply man hisab',icon:'🧮',group:'Recovery'},
   {id:'recovery',label:'Market recovery',icon:'💰',group:'Recovery'},
   {id:'shops',label:'Shops & routes',icon:'🏪',group:'Customers'},
+  {id:'pgroups',label:'Customer groups & rates',icon:'🏷️',group:'Customers'},
   {id:'expenses',label:'Expenses',icon:'💸',group:'Accounts'},
   {id:'accounts',label:'Payment accounts',icon:'🏦',group:'Accounts'},
+  {id:'cashreg',label:'Cash register vs actual',icon:'🧾',group:'Accounts'},
   {id:'investors',label:'Owner & investors',icon:'👥',group:'Accounts'},
   {id:'staff',label:'Staff advance',icon:'🧾',group:'Staff'},
+  {id:'commission',label:'Booker commission',icon:'🎯',group:'Staff'},
   {id:'salary',label:'Salary & attendance',icon:'💼',group:'Staff'},
   {id:'reports',label:'Reports',icon:'📈',group:'Reports'},
   {id:'bookerReports',label:'My Reports',icon:'📊',group:'Reports'},
   {id:'storeReports',label:'Store Manager Reports',icon:'🏬',group:'Reports'},
   {id:'attendanceLog',label:'Attendance & timings',icon:'🕒',group:'Staff'},
   {id:'users',label:'Users & access',icon:'⚙️',group:'System'},
+  {id:'actlog',label:'Activity log (kisne kya badla)',icon:'🕵️',group:'System'},
   {id:'backup',label:'Backup & day end',icon:'💾',group:'System'},
   {id:'companies',label:'Companies',icon:'🏢',group:'System'},
   {id:'masterSheet',label:'Master sheet (sab companies)',icon:'📑',group:'Reports'},
@@ -1165,7 +1169,7 @@ function freshDB(){return{
   ],
   products:[],shops:[],invoices:[],purchases:[],supplierPayments:[],recoveries:[],collections:[],returns:[],claims:[],stockAdj:[],mobileDone:{},
   expenses:[],accounts:[{id:'acc_cash',name:'Cash in hand',type:'cash',opening:0,openingDate:today()}],transfers:[],
-  staffAdv:[],salarySetup:{},attendance:{},attendanceLogs:[],salaries:[],investors:[],investorTxns:[],activity:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0},
+  staffAdv:[],salarySetup:{},attendance:{},attendanceLogs:[],salaries:[],investors:[],investorTxns:[],activity:[],cashCounts:[],priceGroups:[],dayEnds:[],picklists:[],counters:{inv:0,pur:0,clm:0,pick:0},
   licence:{limit:200,unlimited:false,devName:'Fatima-Tech',phone:'',whatsapp:'',email:'',message:'Your free limit of invoices is complete. Please purchase the full version to continue.'}
 }}
 
@@ -1268,7 +1272,14 @@ function save(silentSync){
   if(!silentSync)Cloud.push();
 }
 const S=()=>DB.settings;
-function log(module,action,record,details){DB.activity.unshift({id:uid(),at:nowStamp(),user:ME?ME.username:'system',module,action,record:record||'',details:details||''});if(DB.activity.length>20000)DB.activity.length=20000}
+function log(module,action,record,details,before,after){const e={id:uid(),at:nowStamp(),user:ME?ME.username:'system',module,action,record:record||'',details:details||''};if(before)e.before=String(before);if(after)e.after=String(after);DB.activity.unshift(e);if(DB.activity.length>20000)DB.activity.length=20000}
+/* Activity log: purani aur nayi value. snapRec() record ki simple fields ka aks leta hai, logEdit() farq nikal kar log mein likhta hai. */
+const LOG_SKIP=new Set(['id','image','pass','perms','createdAt','editedAt','editedBy','payload','gp']);
+function snapRec(o){const r={};if(!o)return r;for(const k in o){if(LOG_SKIP.has(k))continue;const v=o[k];if(k==='items'&&Array.isArray(v)){r.items=v.map(i=>(i.name||i.productName||'')+' '+(i.pcs!==undefined?i.pcs+'pc':'')+(i.rate!==undefined?' @'+i.rate:'')).join('; ');continue}
+  if(v===null||v===undefined||typeof v==='function')continue;if(Array.isArray(v)){if(v.every(x=>typeof x!=='object'))r[k]=v.join(',');continue}if(typeof v==='object')continue;r[k]=v}return r}
+const recTxt=r=>Object.keys(r).map(k=>k+': '+r[k]).join(', ');
+function logEdit(module,action,record,details,before,obj){const a=before||{},b=snapRec(obj);const ks=[...new Set([...Object.keys(a),...Object.keys(b)])].filter(k=>String(a[k]??'')!==String(b[k]??''));
+  log(module,action,record,details,ks.map(k=>k+': '+(a[k]??'—')).join(', '),ks.map(k=>k+': '+(b[k]??'—')).join(', '))}
 function nextNo(key,prefix){DB.counters[key]=(DB.counters[key]||0)+1;return prefix+String(DB.counters[key]).padStart(5,'0')}
 
 /* ---------- auth / session ---------- */
@@ -1279,6 +1290,8 @@ function canSee(mid){
   const m=MODULES.find(x=>x.id===mid);if(!m||!ME)return false;
   if(m.devOnly)return isDev();
   if(mid==='companies'||mid==='masterSheet')return CO.on&&isAdmin();
+  if(mid==='actlog')return isAdmin();
+  if(mid==='pgroups'||mid==='cashreg'||mid==='commission')return isAdmin()||!!(ME.perms&&ME.perms.includes(mid));
   if(mid==='smhisab')return isAdmin()||ME.role==='kpo'||!!(ME.perms&&ME.perms.includes(mid));
   if(mid==='orderSync')return ME.role==='booker';
   if(mid==='bookerReports')return ME.role==='booker'||isDev();
@@ -2248,10 +2261,10 @@ VIEWS.pos=el=>{
   const fillSM=()=>{const bk=V('pBooker'),cur=V('pSM')||(ed&&ed.supplymanId)||'';const list=sms.filter(u=>!bk||u.bookerId===bk||u.id===cur);
     $('#pSM').innerHTML=opt(list.map(u=>({v:u.id,t:u.name||u.username})),list.some(u=>u.id===cur)?cur:'','— later —')};
   if($('#pBooker').tagName==='SELECT')$('#pBooker').onchange=fillSM;fillSM();
-  $('#pShop').onchange=()=>{const sh=byId('shops',V('pShop'));if(sh&&sh.bookerId&&ME.role!=='booker'&&$('#pBooker').tagName==='SELECT')$('#pBooker').value=sh.bookerId;fillSM();shopInfo()};shopInfo();
+  $('#pShop').onchange=()=>{const sh=byId('shops',V('pShop'));if(sh&&sh.bookerId&&ME.role!=='booker'&&$('#pBooker').tagName==='SELECT')$('#pBooker').value=sh.bookerId;fillSM();shopInfo();if(V('pProd')&&$('#pProd').oninput)$('#pProd').oninput()};shopInfo();
   $('#pProd').oninput=()=>{const p=findP();if(!p){$('#pHint').textContent='';return}
     const inCart=sum(POS.items.filter(i=>i.productId===p.id),i=>i.pcs);const st=stockOf(p.id,POS.editId)-inCart;
-    $('#pRate').value=p.tradePc||'';$('#pHint').innerHTML=`Stock: <b>${splitPcs(p,st)}</b> (${fmt(st)} pcs) • Packing ${p.packing} • Trade/ctn ${money(N(p.tradePc)*N(p.packing))} • Retail/pc ${money(p.retailPc)}`};
+    const gsh=byId('shops',V('pShop')),gg=gsh&&gsh.groupId&&byId('priceGroups',gsh.groupId);$('#pRate').value=rateFor(p,gsh)||'';$('#pHint').innerHTML=`Stock: <b>${splitPcs(p,st)}</b> (${fmt(st)} pcs) • Packing ${p.packing} • Trade/ctn ${money(N(p.tradePc)*N(p.packing))} • Retail/pc ${money(p.retailPc)}${gg?' • <b>Group '+esc(gg.name)+': '+money(rateFor(p,gsh))+'/pc</b>':''}`};
   const draw=()=>{
     $('#pItems').innerHTML=table([{t:'Product'},{t:'Qty'},{t:'Rate',n:1},{t:'Discount',n:1},{t:'Total',n:1},{t:''}],POS.items.map((it,ix)=>[esc(it.name),splitPcs({packing:it.packing},it.pcs),fmt(it.rate),fmt(it.disc),fmt(it.gross-it.disc),`<button class="btn sm bad" data-rm="${ix}">✕</button>`]));
     $$('#pItems [data-rm]').forEach(b=>b.onclick=()=>{POS.items.splice(+b.dataset.rm,1);draw()});
@@ -2262,7 +2275,7 @@ VIEWS.pos=el=>{
     const pcs=N(V('pCtn'))*N(p.packing)+N(V('pPcs'));if(pcs<=0)return toast('Enter cartons or pieces.',true);
     const inCart=sum(POS.items.filter(i=>i.productId===p.id),i=>i.pcs);const st=stockOf(p.id,POS.editId)-inCart;
     if(pcs>st&&!S().allowNegativeStock)return toast(`Not enough stock. Only ${splitPcs(p,st)} available.`,true);
-    const rate=N(V('pRate'))||N(p.tradePc);const gross=r2(pcs*rate);const dt=V('pDType'),dv=N(V('pDVal'));
+    const rate=N(V('pRate'))||rateFor(p,byId('shops',V('pShop')));const gross=r2(pcs*rate);const dt=V('pDType'),dv=N(V('pDVal'));
     const disc=r2(dt==='pct'?gross*dv/100:dt==='pc'?pcs*dv:dv);
     POS.items.push({productId:p.id,name:p.name,brand:p.brand||'',packing:N(p.packing),pcs,rate,retail:N(p.retailPc),gross,discType:dt,discVal:dv,disc,cost:r2(costPerPc(p.id))});
     ['pProd','pCtn','pPcs','pRate','pDVal'].forEach(i=>$('#'+i).value='');$('#pHint').textContent='';$('#pProd').focus();draw();
@@ -2277,7 +2290,7 @@ VIEWS.pos=el=>{
     if(V('pPay')==='credit'&&N(shop.creditLimit)&&due+T.net>N(shop.creditLimit)){if(S().creditLimitBlock)return toast('Credit limit exceeded. Order not saved.',true);if(!confirm('This exceeds the credit limit. Save anyway?'))return}
     const bk=byId('users',V('pBooker')),sm=byId('users',V('pSM'));
     const rec={date:V('pDate'),deliveryDate:V('pDel')||V('pDate'),bookerId:V('pBooker'),bookerName:bk?bk.name||bk.username:'',supplymanId:V('pSM'),supplyman:sm?sm.name||sm.username:'',shopId:shop.id,shopName:shop.name,route:shop.route||'',payType:V('pPay'),accountId:V('pAcc')||'acc_cash',items:POS.items,gross:T.g,discount:T.d,tax:T.tax,net:T.net};
-    let iv;if(ed){Object.assign(ed,rec,{editedBy:ME.username,editedAt:nowStamp()});iv=ed;log('Sales','Invoice edited',ed.no,money(T.net))}
+    let iv;if(ed){const SB=snapRec(ed);Object.assign(ed,rec,{editedBy:ME.username,editedAt:nowStamp()});iv=ed;logEdit('Sales','Invoice edited',ed.no,money(T.net),SB,ed)}
     else{DB.meta.invMade=invUsed()+1;iv={id:ME.role==='booker'?uuid():uid(),no:nextNo('inv',S().invoicePrefix||'INV-'),status:'booked',createdBy:ME.username,createdAt:nowStamp(),...rec};DB.invoices.push(iv);log('Sales','Invoice created',iv.no,shop.name+' '+money(T.net))}
     save();if(ME.role==='booker')Orders.queue(iv);POS={items:[],editId:null};toast('Invoice '+iv.no+' saved.');if(print)printInvoice(iv);render();
   };
@@ -2345,7 +2358,7 @@ VIEWS.invoices=el=>{
       ['',list.length+' invoices','','','','','',fmt(sum(list.filter(i=>i.status!=='cancelled'),i=>i.net)),fmt(sum(list,invDue)),'',...(bk?['']:[]),'']);
     $$('#ivOut [data-pr]').forEach(b=>b.onclick=()=>printInvoice(byId('invoices',b.dataset.pr)));
     $$('#ivOut [data-ed]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.ed);if(!guardEdit(iv.date)||!Orders.guardLock(iv.date))return;if(invCollected(iv.id)>0&&!confirm('Cash has already been collected on this invoice. Edit anyway?'))return;POS={items:JSON.parse(JSON.stringify(iv.items)),editId:iv.id};go('pos')});
-    $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);if(!guardEdit(iv.date)||!Orders.guardLock(iv.date))return;confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net));save();run();toast('Deleted.')})});
+    $$('#ivOut [data-del]').forEach(b=>b.onclick=()=>{const iv=byId('invoices',b.dataset.del);if(!guardEdit(iv.date)||!Orders.guardLock(iv.date))return;confirmBox(`Delete invoice ${iv.no} permanently? (Better to cancel it from "Returns" so the record is kept.)`,()=>{DB.invoices=DB.invoices.filter(x=>x.id!==iv.id);DB.collections=DB.collections.filter(c=>c.invoiceId!==iv.id);log('Sales','Invoice deleted',iv.no,money(iv.net),recTxt(snapRec(iv)));save();run();toast('Deleted.')})});
   };
   ['ivFrom','ivTo','ivDT','ivQ','ivSt'].forEach(id=>$('#'+id).oninput=run);
   $('#ivPrintSel').onclick=()=>{const ids=$$('#ivOut [data-ck]:checked').map(c=>c.dataset.ck);if(!ids.length)return toast('Tick the invoices first.',true);if(window.NexaApk)return exportInvoicesPDF(ids.map(id=>byId('invoices',id)));printDoc('invoice',ids.map(id=>invoiceBody(byId('invoices',id))))};
@@ -3168,7 +3181,7 @@ VIEWS.returns=el=>{
   };
   $$('[data-rt]').forEach(b=>b.onclick=()=>form(b.dataset.rt));form('item');
   $$('[data-prt]').forEach(b=>b.onclick=()=>{const r=byId('returns',b.dataset.prt);printDoc('returnSlip',`<div class="meta"><div><b>Date:</b> ${fmtDate(r.date)}</div><div><b>Shop:</b> ${esc(r.shopName)}</div></div>${tableHTMLPrint([{t:'Product'},{t:'Pcs',n:1},{t:'Rate',n:1},{t:'Amount',n:1}],[[r.productName,r.pcs,fmt(r.rate),fmt(r.amount)]])}<p><b>Settlement:</b> ${r.settle==='cash'?'Cash refund':'Adjusted in balance'} • <b>Reason:</b> ${esc(r.reason)}</p>`)});
-  $$('[data-drt]').forEach(b=>b.onclick=()=>guardEdit((byId('returns',b.dataset.drt)||{}).date)&&confirmBox('Delete this return record?',()=>{DB.returns=DB.returns.filter(r=>r.id!==b.dataset.drt);log('Returns','Return deleted',b.dataset.drt);save();render()}));
+  $$('[data-drt]').forEach(b=>b.onclick=()=>guardEdit((byId('returns',b.dataset.drt)||{}).date)&&confirmBox('Delete this return record?',()=>{const rt=byId('returns',b.dataset.drt);DB.returns=DB.returns.filter(r=>r.id!==b.dataset.drt);log('Returns','Return deleted',rt?rt.shopName:b.dataset.drt,rt?money(rt.amount):'',recTxt(snapRec(rt)));save();render()}));
 };
 
 /* =====================================================================
@@ -3276,7 +3289,7 @@ VIEWS.purchase=el=>{
     const rec={date:V('puDate'),supplier:V('puSup'),ref:V('puRef'),category:V('puCat'),items:PUR.items,total,paidNow:N(V('puPaid')),accountId:V('puAcc')};
     if(f)rec.attachment=await readImage(f,1100,.7);
     PUR.items.forEach(it=>{const p=byId('products',it.productId);if(p){p.costCtn=it.costCtn;if(rec.category&&(!p.category||p.category==='General'))p.category=rec.category}});
-    if(ed){Object.assign(ed,rec);log('Purchase','Purchase edited',ed.no,money(total))}else{const pu={id:uid(),no:nextNo('pur',S().purchasePrefix||'PUR-'),by:ME.username,...rec};DB.purchases.push(pu);log('Purchase','Purchase saved',pu.no,rec.supplier+' '+money(total))}
+    if(ed){const SB=snapRec(ed);Object.assign(ed,rec);logEdit('Purchase','Purchase edited',ed.no,money(total),SB,ed)}else{const pu={id:uid(),no:nextNo('pur',S().purchasePrefix||'PUR-'),by:ME.username,...rec};DB.purchases.push(pu);log('Purchase','Purchase saved',pu.no,rec.supplier+' '+money(total))}
     save();PUR={items:[],editId:null};toast('Purchase saved. Stock updated.');go('purchases')};
   if($('#puCancel'))$('#puCancel').onclick=()=>{PUR={items:[],editId:null};render()};
   draw();
@@ -3291,7 +3304,7 @@ VIEWS.purchases=el=>{
     $$('[data-pp]').forEach(b=>b.onclick=()=>printDoc('purchase',purchaseBody(byId('purchases',b.dataset.pp))));
     $$('[data-pa]').forEach(b=>b.onclick=()=>modal('Invoice attachment',`<img src="${byId('purchases',b.dataset.pa).attachment}" style="max-width:100%">`));
     $$('[data-pe]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pe);if(!guardEdit(p.date))return;PUR={items:JSON.parse(JSON.stringify(p.items)),editId:p.id};go('purchase')});
-    $$('[data-pd]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pd);if(!guardEdit(p.date))return;confirmBox(`Delete purchase ${p.no}? Its stock will also be deducted.`,()=>{DB.purchases=DB.purchases.filter(x=>x.id!==p.id);log('Purchase','Purchase deleted',p.no,money(p.total));save();run()})});
+    $$('[data-pd]').forEach(b=>b.onclick=()=>{const p=byId('purchases',b.dataset.pd);if(!guardEdit(p.date))return;confirmBox(`Delete purchase ${p.no}? Its stock will also be deducted.`,()=>{DB.purchases=DB.purchases.filter(x=>x.id!==p.id);log('Purchase','Purchase deleted',p.no,money(p.total),recTxt(snapRec(p)));save();run()})});
   };['plFrom','plTo','plQ'].forEach(i=>$('#'+i).oninput=run);run();
 };
 VIEWS.suppliers=el=>{
@@ -3323,7 +3336,7 @@ function toggleProduct(p){if(!p)return;p.active=!isOn(p);log('Products',p.active
 function deleteProduct(p){if(!p)return;
   const used=DB.invoices.some(i=>i.items.some(x=>x.productId===p.id))||DB.purchases.some(i=>i.items.some(x=>x.productId===p.id))||DB.returns.some(r=>r.productId===p.id)||DB.claims.some(c=>c.productId===p.id);
   if(used)return toast('This product has invoices / purchases / returns / claims and cannot be deleted. Deactivate it instead.',true);
-  confirmBox('Delete this product?',()=>{DB.products=DB.products.filter(x=>x.id!==p.id);log('Products','Product deleted',p.name);save();render()})}
+  confirmBox('Delete this product?',()=>{DB.products=DB.products.filter(x=>x.id!==p.id);log('Products','Product deleted',p.name,'',recTxt(snapRec(p)));save();render()})}
 function showProductLedger(p){if(!p)return;
   const mv=[];const add=(date,type,ref,q,note)=>mv.push({date:date||'',type,ref:ref||'',q:N(q),note:note||''});
   DB.purchases.forEach(pu=>pu.items.forEach(it=>{if(it.productId===p.id)add(pu.date,'Purchase',pu.no,it.pcs,pu.supplier)}));
@@ -3338,14 +3351,14 @@ function showProductLedger(p){if(!p)return;
   $('.modal').classList.add('wide');
 }
 function editProduct(p){
-  const n=!p;p=p||{name:'',sku:'',brand:'',category:'General',packing:12,costCtn:0,tradePc:0,retailPc:0,openingPcs:0};
+  const n=!p;p=p||{name:'',sku:'',brand:'',category:'General',packing:12,costCtn:0,tradePc:0,retailPc:0,openingPcs:0};const SB=n?{}:snapRec(p);
   modal(n?'New product':'Edit product',`<div class="grid">${F('Name',inp('epN',p.name),'wide')}${F('Code / SKU',inp('epS',p.sku))}${F('Brand',inp('epB',p.brand))}${F('Category',inp('epC',p.category))}${F('Carton packing',inp('epP',p.packing,'number'))}
    ${F('Cost / carton',inp('epCost',p.costCtn,'number'))}${F('Trade / pc',inp('epT',p.tradePc,'number'))}${F('Retail / pc',inp('epR',p.retailPc,'number'))}
    ${F('Opening stock (cartons)',inp('epOC',Math.floor(N(p.openingPcs)/(N(p.packing)||1)),'number'))}${F('Opening loose pcs',inp('epOP',N(p.openingPcs)%(N(p.packing)||1),'number'))}${F('Image',`<input id="epI" type="file" accept="image/*">`)}</div>`,
    [...(!n?[{t:'Delete',bad:1,fn:()=>deleteProduct(p)}]:[]),
     {t:'Save',pri:1,fn:async()=>{if(!V('epN'))return toast('Enter a name.',true);const pk=N(V('epP'))||1;
      Object.assign(p,{name:V('epN'),sku:V('epS'),brand:V('epB'),category:V('epC'),packing:pk,costCtn:N(V('epCost')),tradePc:N(V('epT')),retailPc:N(V('epR')),openingPcs:N(V('epOC'))*pk+N(V('epOP'))});
-     const f=$('#epI').files[0];if(f)p.image=await readImage(f,160,.75);if(n){p.id=uid();DB.products.push(p)}log('Products',n?'Product added':'Product edited',p.name);save();closeModal();render()}}]);
+     const f=$('#epI').files[0];if(f)p.image=await readImage(f,160,.75);if(n){p.id=uid();DB.products.push(p)}logEdit('Products',n?'Product added':'Product edited',p.name,'',n?null:SB,p);save();closeModal();render()}}]);
 }
 
 /* =====================================================================
@@ -3393,7 +3406,7 @@ VIEWS.recovery=el=>{
       `<div class="row"><button class="btn sm" data-rpr="${r.id}">🖨️</button>${isAdmin()&&s==='pending'?`<button class="btn sm pri" data-rap="${r.id}">✅</button><button class="btn sm bad" data-rrj="${r.id}">✖</button>`:''}${isAdmin()?`<button class="btn sm bad" data-rdl="${r.id}">🗑️</button>`:''}</div>`]),['','','','','Total',fmt(sum(l,r=>r.amount)),fmt(sum(l,r=>r.short)),'','']);
     $$('[data-rap]').forEach(b=>b.onclick=()=>{approveRec(byId('recoveries',b.dataset.rap));save();render()});
     $$('[data-rrj]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rrj);r.status='rejected';r.rejectedBy=ME.username;log('Recovery','Rejected',r.shopName,money(r.amount));save();render()});
-    $$('[data-rdl]').forEach(b=>b.onclick=()=>{const rr=byId('recoveries',b.dataset.rdl)||{};return guardEdit(rr.status==='approved'?rr.approvedDate||rr.date:'')&&confirmBox('Delete this recovery record?',()=>{const r=byId('recoveries',b.dataset.rdl);DB.recoveries=DB.recoveries.filter(x=>x.id!==r.id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Deleted',r.shopName,money(r.amount));save();render()})});
+    $$('[data-rdl]').forEach(b=>b.onclick=()=>{const rr=byId('recoveries',b.dataset.rdl)||{};return guardEdit(rr.status==='approved'?rr.approvedDate||rr.date:'')&&confirmBox('Delete this recovery record?',()=>{const r=byId('recoveries',b.dataset.rdl);DB.recoveries=DB.recoveries.filter(x=>x.id!==r.id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==r.id);log('Recovery','Deleted',r.shopName,money(r.amount),recTxt(snapRec(r)));save();render()})});
     $$('[data-rpr]').forEach(b=>b.onclick=()=>{const r=byId('recoveries',b.dataset.rpr);printDoc('recovery',`<div class="meta"><div><b>Date:</b> ${fmtDate(r.date)}</div><div><b>Status:</b> ${r.status}</div><div><b>Shop:</b> ${esc(r.shopName)}</div><div><b>Collector:</b> ${esc(r.collector)}</div></div><table class="kv"><tr><td>Amount received (${esc(r.method)})</td><td>${money(r.amount)}</td></tr>${r.short?`<tr><td>Short</td><td>${money(r.short)}</td></tr>`:''}<tr><td>Balance after</td><td>${money(shopDue(r.shopId))}</td></tr></table>${r.note?`<p>${esc(r.note)}</p>`:''}`)});
   };
   $$('[data-rs]').forEach(b=>b.onclick=()=>list(b.dataset.rs));list('pending');
@@ -3437,7 +3450,7 @@ VIEWS.shops=el=>{
 function toggleShop(s){if(!s)return;s.active=!isOn(s);log('Shops',s.active?'Shop activated':'Shop deactivated',s.name);save();toast(s.name+(s.active?' is active again.':' deactivated. It is hidden from new invoices, recoveries and returns.'));render()}
 function deleteShop(s){if(!s)return;
   if(DB.invoices.some(i=>i.shopId===s.id)||DB.recoveries.some(r=>r.shopId===s.id)||DB.collections.some(c=>c.shopId===s.id)||DB.returns.some(r=>r.shopId===s.id))return toast('This shop has invoices / payments / returns and cannot be deleted. Deactivate it instead.',true);
-  confirmBox('Delete this shop?',()=>{DB.shops=DB.shops.filter(x=>x.id!==s.id);log('Shops','Shop deleted',s.name);save();render()})}
+  confirmBox('Delete this shop?',()=>{DB.shops=DB.shops.filter(x=>x.id!==s.id);log('Shops','Shop deleted',s.name,'',recTxt(snapRec(s)));save();render()})}
 function addShopPayment(s){if(!s)return;const due=Math.max(0,r2(shopDue(s.id)));const wait=S().recoveryNeedsApproval&&!isAdmin();
   modal('Add payment: '+s.name,`<div class="prod-hint">Balance due: <b>${money(shopDue(s.id))}</b></div><div class="grid mt">${F('Date',inp('apD',today(),'date'))}${F('Amount received',inp('apA','','number','inputmode="decimal"'))}${F('Payment method',sel('apM',['Cash','Bank transfer','Easypaisa','JazzCash','Cheque'],'Cash'))}${F('Account',sel('apAcc',accOptions(),'acc_cash'))}${F('Note',inp('apN'),'wide')}</div>${wait?'<p class="note mt">This payment will be sent to the admin for approval.</p>':''}`,
    [{t:wait?'Send for approval':'Save payment',pri:1,fn:()=>{const amt=N(V('apA'));if(amt<=0)return toast('Enter the amount received.',true);if(!guard(V('apD')))return;
@@ -3445,17 +3458,17 @@ function addShopPayment(s){if(!s)return;const due=Math.max(0,r2(shopDue(s.id)));
      DB.recoveries.push(r);if(!wait)approveRec(r);log('Recovery','Recovery submitted',s.name,money(amt));save();closeModal();toast(wait?'Sent for approval.':'Payment saved.');render()}}]);
 }
 function editShop(s){const n=!s;s=s||{name:'',owner:'',phone:'',route:'',address:'',creditLimit:N(S().defaultCreditLimit),opening:0,openingDate:today(),bookerId:ME.role==='booker'?ME.id:''};
-  const routes=[...new Set(DB.shops.map(x=>x.route).filter(Boolean))];
+  const routes=[...new Set(DB.shops.map(x=>x.route).filter(Boolean))];const SB=n?{}:snapRec(s);
   modal(n?'New shop':'Edit shop',`<div class="grid">${F('Shop name *',inp('esN',s.name),'wide')}${F('Owner *',inp('esO',s.owner))}${F('Phone *',inp('esP',s.phone,'tel'))}${F('Route / area *',`<input id="esR" list="esRL" value="${esc(s.route)}"><datalist id="esRL">${opt(routes)}</datalist>`)}
    ${F('Booker'+(ME.role==='booker'?'':' *'),ME.role==='booker'?`<input readonly value="${esc(ME.name)}"><input type="hidden" id="esB" value="${ME.id}">`:sel('esB',usersByRole('booker').map(u=>({v:u.id,t:u.name||u.username})),s.bookerId,'—'))}
-   ${F('Address *',inp('esA',s.address),'wide')}${F('Credit limit',inp('esL',s.creditLimit,'number',isAdmin()?'':'readonly'))}${F('Opening balance',inp('esOB',s.opening,'number',isAdmin()?'':'readonly'))}${F('Opening date',inp('esOD',s.openingDate,'date'))}</div>`,
+   ${F('Address *',inp('esA',s.address),'wide')}${F('Credit limit',inp('esL',s.creditLimit,'number',isAdmin()?'':'readonly'))}${F('Opening balance',inp('esOB',s.opening,'number',isAdmin()?'':'readonly'))}${F('Opening date',inp('esOD',s.openingDate,'date'))}${isAdmin()?F('Customer group (rate)',sel('esG',DB.priceGroups.map(g=>({v:g.id,t:g.name})),s.groupId||'','— Normal (trade rate) —')):''}</div>`,
    [...(!n&&isAdmin()?[{t:'Delete',bad:1,fn:()=>deleteShop(s)}]:[]),
     {t:'Save',pri:1,fn:()=>{const miss=[['esN','shop name'],['esO','owner'],['esP','phone'],['esR','route'],['esA','address'],...(ME.role!=='booker'&&usersByRole('booker').length?[['esB','booker']]:[])].filter(([i])=>!V(i));if(miss.length)return toast('Required: '+miss.map(x=>x[1]).join(', ')+'.',true);
      const dup=DB.shops.find(x=>x!==s&&x.id!==s.id&&x.name.trim().toLowerCase()===V('esN').trim().toLowerCase()&&String(x.route||'').trim().toLowerCase()===V('esR').trim().toLowerCase());
      if(dup&&!V('esA')&&!V('esO'))return toast('Same shop name already exists on this route. Enter the address or owner name so the two can be told apart.',true);
      if(dup&&!confirm('A shop named "'+dup.name+'" already exists on '+(dup.route?'route "'+dup.route+'"':'the same (empty) route')+(dup.address?' ('+dup.address+')':'')+'. Same name and route can cause recoveries to be entered on the wrong shop. Save anyway?'))return;
-     Object.assign(s,{name:V('esN'),owner:V('esO'),phone:V('esP'),route:V('esR'),bookerId:V('esB'),address:V('esA'),creditLimit:N(V('esL')),opening:N(V('esOB')),openingDate:V('esOD')});
-     if(n){s.id=uid();DB.shops.push(s)}log('Shops',n?'Shop added':'Shop edited',s.name);save();closeModal();render()}}]);
+     Object.assign(s,{name:V('esN'),owner:V('esO'),phone:V('esP'),route:V('esR'),bookerId:V('esB'),address:V('esA'),creditLimit:N(V('esL')),opening:N(V('esOB')),openingDate:V('esOD'),groupId:isAdmin()?V('esG'):(s.groupId||'')});
+     if(n){s.id=uid();DB.shops.push(s)}logEdit('Shops',n?'Shop added':'Shop edited',s.name,'',n?null:SB,s);save();closeModal();render()}}]);
 }
 function ledgerRows(shopId,from,to){const all=shopLedger(shopId,to);const before=all.filter(x=>from&&x.date<from);const ob=before.length?before[before.length-1].bal:0;return{ob,rows:all.filter(x=>!from||x.date>=from)}}
 /* which bill each payment settled: payment on an invoice goes to that bill first, the rest to the oldest open bill */
@@ -3512,11 +3525,11 @@ function showLedger(shopId,tab){const sh=byId('shops',shopId);if(!sh)return;
         const ns=byId('shops',V('lgES2'));if(ns&&ns.id!==x.shopId){const from=x.shopName;x.shopId=ns.id;x.shopName=ns.name;DB.staffAdv.forEach(a=>{if(a.recoveryId===x.id)a.note='Recovery short: '+ns.name});log('Recovery','Moved to another shop',x.id,from+' → '+shopLabel(ns)+' '+money(na))}
         if(N(x.expected)){x.short=r2(Math.max(0,N(x.expected)-na));if(x.adjustType!=='none')x.adjust=x.short}
         if(x.adjustType==='staff'){const a=DB.staffAdv.find(s=>s.recoveryId===x.id);if(a){if(x.short>0){a.amount=x.short;a.date=nd}else DB.staffAdv=DB.staffAdv.filter(s=>s!==a)}else if(x.short>0&&x.staffId&&x.status==='approved')DB.staffAdv.push({id:uid(),date:nd,staffId:x.staffId,staffName:x.staffName,type:'Cash Difference',amount:x.short,deductMonth:monthOf(nd),note:'Recovery short: '+x.shopName,recoveryId:x.id})}
-        log('Recovery','Recovery edited',x.shopName,old+' → '+fmtDate(nd)+' '+money(na))}
+        log('Recovery','Recovery edited',x.shopName,old+' → '+fmtDate(nd)+' '+money(na),old,fmtDate(nd)+' '+money(na))}
       save();$('#lgEdit').innerHTML='';toast('Payment updated.');draw()}};
   const delPay=key=>{const [src,id]=key.split(':');const x=src==='col'?byId('collections',id):byId('recoveries',id);if(!x)return;if(!guardEdit(src==='col'?x.date:recDate(x)))return;
     if(!confirm('Delete this payment of '+money(x.amount)+' dated '+fmtDate(x.date)+'?'))return;
-    if(src==='col'){DB.collections=DB.collections.filter(c=>c.id!==id);log('Recovery','Collection deleted',x.invoiceNo,money(x.amount))}
+    if(src==='col'){DB.collections=DB.collections.filter(c=>c.id!==id);log('Recovery','Collection deleted',x.invoiceNo,money(x.amount),recTxt(snapRec(x)))}
     else{DB.recoveries=DB.recoveries.filter(r=>r.id!==id);DB.staffAdv=DB.staffAdv.filter(a=>a.recoveryId!==id);log('Recovery','Deleted',x.shopName,money(x.amount))}
     save();$('#lgEdit').innerHTML='';toast('Payment deleted.');draw()};
   $$('[data-lt]').forEach(b=>b.onclick=()=>{cur=b.dataset.lt;$('#lgEdit').innerHTML='';draw()});
@@ -3534,7 +3547,7 @@ VIEWS.expenses=el=>{
   el.innerHTML=`<div class="card"><h3>Add expense</h3><div class="grid">${F('Date',inp('exDate',today(),'date'))}${F('Expense head',`<input id="exHead" list="exHL"><datalist id="exHL">${opt(heads)}</datalist>`)}${F('Amount',inp('exAmt','','number','inputmode="decimal"'))}${F('Account',sel('exAcc',accOptions(),'acc_cash'))}${F('Note',inp('exNote'),'wide')}</div><div class="row mt"><button class="btn pri" id="exGo">💾 Save</button></div></div>
    <div class="card"><h3>Expenses this month</h3>${table([{t:'Date'},{t:'Head'},{t:'Amount',n:1},{t:'Account'},{t:'Note'},{t:'By'},{t:''}],DB.expenses.filter(e=>monthOf(e.date)===thisMonth()).slice().reverse().map(e=>[fmtDate(e.date),esc(e.head),fmt(e.amount),esc((byId('accounts',e.accountId)||{}).name||''),esc(e.note||''),esc(e.by||''),isAdmin()?`<button class="btn sm bad" data-dex="${e.id}">🗑️</button>`:'']),['','Total',fmt(sum(DB.expenses.filter(e=>monthOf(e.date)===thisMonth()),e=>e.amount)),'','','',''])}</div>`;
   $('#exGo').onclick=()=>{if(!V('exHead')||N(V('exAmt'))<=0)return toast('Enter head and amount.',true);if(!guard(V('exDate')))return;DB.expenses.push({id:uid(),date:V('exDate'),head:V('exHead'),amount:N(V('exAmt')),accountId:V('exAcc'),note:V('exNote'),by:ME.username});log('Expenses','Expense added',V('exHead'),money(V('exAmt')));save();toast('Expense saved.');render()};
-  $$('[data-dex]').forEach(b=>b.onclick=()=>guardEdit((byId('expenses',b.dataset.dex)||{}).date)&&confirmBox('Delete this expense?',()=>{DB.expenses=DB.expenses.filter(x=>x.id!==b.dataset.dex);log('Expenses','Expense deleted',b.dataset.dex);save();render()}));
+  $$('[data-dex]').forEach(b=>b.onclick=()=>guardEdit((byId('expenses',b.dataset.dex)||{}).date)&&confirmBox('Delete this expense?',()=>{const ex=byId('expenses',b.dataset.dex);DB.expenses=DB.expenses.filter(x=>x.id!==b.dataset.dex);log('Expenses','Expense deleted',ex?ex.head:b.dataset.dex,ex?money(ex.amount):'',recTxt(snapRec(ex)));save();render()}));
 };
 VIEWS.accounts=el=>{
   el.innerHTML=`<div class="kpis">${DB.accounts.map(a=>`<div class="kpi"><small>${esc(a.name)} (${esc(a.type)})</small><b>${money(accountBalance(a.id))}</b></div>`).join('')}</div>
@@ -3705,7 +3718,7 @@ const REPORTS={
   brand:{t:'Brand wise profit',f:()=>dateRange('r'),b:()=>{const a={};activeInv().filter(i=>inRange(i.date,V('rFrom'),V('rTo'))).forEach(i=>i.items.forEach(it=>{const k=it.brand||'—';const x=a[k]=a[k]||{s:0,c:0};x.s+=N(it.gross)-N(it.disc);x.c+=N(it.pcs)*N(it.cost)}));const l=Object.entries(a);
     return{cols:[{t:'Brand'},{t:'Sales',n:1},{t:'Cost',n:1},{t:'Profit',n:1},{t:'Margin %',n:1}],rows:l.map(([k,x])=>[k,x.s,x.c,x.s-x.c,x.s?r2((x.s-x.c)/x.s*100):0]),foot:['Total',sum(l,x=>x[1].s),sum(l,x=>x[1].c),sum(l,x=>x[1].s-x[1].c),'']}}},
   returns:{t:'Returns report',f:()=>dateRange('r'),b:()=>{const l=DB.returns.filter(r=>inRange(r.date,V('rFrom'),V('rTo')));return{cols:[{t:'Date'},{t:'Kind'},{t:'Shop'},{t:'Product'},{t:'Pcs',n:1},{t:'Amount',n:1},{t:'Settle'},{t:'Reason'}],rows:l.map(r=>[fmtDate(r.date),r.kind,r.shopName,r.productName,r.pcs,r.amount,r.settle,r.reason||'']),foot:['Total','','','',sum(l,r=>r.pcs),sum(l,r=>r.amount),'','']}}},
-  activity:{t:'Activity log',f:()=>dateRange('r',addDays(today(),-7),today())+F('User',sel('rU',DB.users.map(u=>u.username),'','All')),b:()=>{const l=DB.activity.filter(a=>inRange(a.at.slice(0,10),V('rFrom'),V('rTo'))&&(!V('rU')||a.user===V('rU')));return{cols:[{t:'Time'},{t:'User'},{t:'Module'},{t:'Action'},{t:'Record'},{t:'Detail'}],rows:l.map(a=>[a.at,a.user,a.module,a.action,a.record,a.details])}}}
+  activity:{t:'Activity log',f:()=>dateRange('r',addDays(today(),-7),today())+F('User',sel('rU',DB.users.map(u=>u.username),'','All')),b:()=>{const l=DB.activity.filter(a=>inRange(a.at.slice(0,10),V('rFrom'),V('rTo'))&&(!V('rU')||a.user===V('rU')));return{cols:[{t:'Time'},{t:'User'},{t:'Module'},{t:'Action'},{t:'Record'},{t:'Detail'},{t:'Old value'},{t:'New value'}],rows:l.map(a=>[a.at,a.user,a.module,a.action,a.record,a.details,a.before||'',a.after||''])}}}
 };
 // Give every report its own independently configurable print format.
 Object.entries(REPORTS).forEach(([key, report])=>{
@@ -3829,9 +3842,9 @@ function userEditor(u,dev){
     {t:'Save',pri:1,fn:()=>{const nl=NO_LOGIN.includes(V('euR'));let un=V('euU').toLowerCase().replace(/\s+/g,'');if(!un&&n&&nl){const base=V('euN').toLowerCase().replace(/[^a-z0-9]/g,'')||V('euR');un=base;let k=1;while(DB.users.some(x=>x.username.toLowerCase()===un))un=base+(++k)}if(!un||!V('euN'))return toast('Enter name and username.',true);if(V('euR')==='supplyman'&&!V('euBk'))return toast('Select the booker this supply man is linked to.',true);
      if(n&&DB.users.some(x=>x.username.toLowerCase()===un))return toast('This username already exists.',true);if(n&&!nl&&V('euP').length<4)return toast('Password must be at least 4 characters.',true);
      let coSel=u.companies||[];if(mcOn()&&$('#euCoAll')){coSel=$('#euCoAll').checked?[]:$$('#euCo input[value]:checked').map(c=>c.value);if(!$('#euCoAll').checked&&!coSel.length)return toast('Kam az kam ek company chunein ya "Sab companies" tick karein.',true)}
-     Object.assign(u,{name:V('euN'),role:V('euR'),phone:V('euPh'),active:V('euA')==='1',bookerId:V('euBk'),perms:$$('#euPerms input:checked').map(c=>c.value),companies:coSel});
+     const SB=n?{}:snapRec(u);Object.assign(u,{name:V('euN'),role:V('euR'),phone:V('euPh'),active:V('euA')==='1',bookerId:V('euBk'),perms:$$('#euPerms input:checked').map(c=>c.value),companies:coSel});
      if(n){u.id=uid();u.username=un;u.mustChange=true;DB.users.push(u)}if(V('euP'))u.pass=hashPass(u.username,V('euP'));
-     log('Users',n?'User added':'User edited',u.username);save();closeModal();render();toast('User saved.')}}]);
+     logEdit('Users',n?'User added':'User edited',u.username,'',n?null:SB,u);save();closeModal();render();toast('User saved.')}}]);
   const euToggle=()=>{const role=V('euR'),nl=NO_LOGIN.includes(role);$('#euBk').closest('div').classList.toggle('hidden',role!=='supplyman');['euP','euU'].forEach(i=>{const e=$('#'+i).closest('div');if(e)e.classList.toggle('hidden',nl&&(i==='euP'||n))});const pe=$('#euPerms');if(pe){pe.previousElementSibling.classList.toggle('hidden',nl);pe.classList.toggle('hidden',nl);$('#euDef').parentElement.classList.toggle('hidden',nl)}};
   $('#euR').addEventListener('change',euToggle);euToggle();
   $('#euR').onchange=()=>{const d=ROLE_DEFAULTS[V('euR')]||[];$$('#euPerms input').forEach(c=>c.checked=d.includes(c.value))};
@@ -3896,6 +3909,118 @@ VIEWS.users=el=>{
    <p class="note mt">"Staff (no login)" users are only for salary / advance; they cannot log in.</p></div>`;
   $('#usNew').onclick=()=>userEditor(null);$$('[data-ue]').forEach(b=>b.onclick=()=>userEditor(byId('users',b.dataset.ue)));
 };
+
+/* =====================================================================
+   ROUND 1: Activity log (old/new value) • Cash register vs actual • Booker commission • Customer groups & rates
+   ===================================================================== */
+/* ---- customer groups / selling price groups ---- */
+function rateFor(p,shop){const g=shop&&shop.groupId&&byId('priceGroups',shop.groupId);if(!g)return N(p.tradePc);
+  const sp=p.gp&&N(p.gp[g.id]);if(sp>0)return sp;
+  const base=g.base==='retail'?N(p.retailPc):N(p.tradePc);return r2(base*(1+N(g.adj)/100))}
+VIEWS.pgroups=el=>{
+  const BASE=[{v:'trade',t:'Trade rate'},{v:'retail',t:'Retail rate'}];
+  const baseName=g=>g.base==='retail'?'Retail rate':'Trade rate';
+  const draw=()=>{
+    const gs=DB.priceGroups,cur=gs.some(g=>g.id===window._pgCur)?window._pgCur:(gs[0]||{}).id||'';window._pgCur=cur;const g=byId('priceGroups',cur);
+    const routes=[...new Set(DB.shops.map(x=>x.route).filter(Boolean))].sort();
+    el.innerHTML=`<div class="card"><h3>Customer groups (alag alag dukano ke alag rate)<span class="sp"></span><button class="btn sm pri" id="pgNew">➕ Naya group</button>${gs.length?'':' <button class="btn sm" id="pgSeed">Wholesale / Retail / Special banayein</button>'}</h3>
+     <p class="muted small">Har group ka rate Trade ya Retail rate se banta hai, us par % kam/zyada laga sakte hain. Kisi product ka khaas rate neeche "Product ke khaas rate" mein bhi de sakte hain. Shop ko group Shops mein ya yahan route ke hisaab se dein. Group ke bina shop ko pehle jaisa Trade rate milta hai.</p>
+     ${table([{t:'Group'},{t:'Rate kahan se'},{t:'% badlao',n:1},{t:'Khaas rate wale products',n:1},{t:'Dukanen',n:1},{t:''}],gs.map(x=>[esc(x.name),baseName(x),(N(x.adj)>0?'+':'')+fmt(x.adj)+'%',DB.products.filter(p=>p.gp&&N(p.gp[x.id])>0).length,DB.shops.filter(sh=>sh.groupId===x.id).length,`<button class="btn sm" data-pge="${x.id}">✏️ Edit</button> <button class="btn sm bad" data-pgd="${x.id}">🗑️</button>`]))}</div>
+     ${gs.length?`<div class="card"><h3>Dukanon ko group dein</h3><div class="grid">${F('Route',sel('pgR',routes,'','— Route chunein —'))}${F('Group',sel('pgG',gs.map(x=>({v:x.id,t:x.name})),cur,'— Normal (group nahi) —'))}</div><div class="row mt"><button class="btn pri" id="pgAsg">Route ki sab dukanon ko ye group dein</button></div><p class="small muted mt">Ek dukan ko akela group dena ho to Shops mein us ka Edit kholein.</p></div>
+     <div class="card"><h3>Product ke khaas rate: ${F('',sel('pgC',gs.map(x=>({v:x.id,t:x.name})),cur),'')}</h3>${g?`<div class="grid">${F('Product dhundein',inp('pgQ',''))}</div><div class="small muted mt">Khali chhorein to group ka formula chalega (${baseName(g)} ${(N(g.adj)>0?'+':'')+fmt(g.adj)}%). Rate per pc likhein.</div><div id="pgT" class="mt"></div><div class="row mt"><button class="btn pri" id="pgSave">💾 Rate save karein</button></div>`:''}</div>`:''}`;
+    $('#pgNew').onclick=()=>edit();
+    if($('#pgSeed'))$('#pgSeed').onclick=()=>{[['Wholesale','trade',0],['Retail','retail',0],['Special','trade',0]].forEach(([n,b,a])=>DB.priceGroups.push({id:uid(),name:n,base:b,adj:a}));log('Customer groups','Default groups banaye','Wholesale, Retail, Special');save();draw()};
+    $$('[data-pge]').forEach(b=>b.onclick=()=>edit(byId('priceGroups',b.dataset.pge)));
+    $$('[data-pgd]').forEach(b=>b.onclick=()=>{const x=byId('priceGroups',b.dataset.pgd);confirmBox('Group "'+x.name+'" delete karein? Is ki dukanen normal rate par aa jayengi.',()=>{DB.priceGroups=DB.priceGroups.filter(y=>y.id!==x.id);DB.shops.forEach(sh=>{if(sh.groupId===x.id)sh.groupId=''});DB.products.forEach(p=>{if(p.gp)delete p.gp[x.id]});log('Customer groups','Group deleted',x.name,'',recTxt(x));save();draw()})});
+    if(!gs.length)return;
+    $('#pgAsg').onclick=()=>{const r=V('pgR');if(!r)return toast('Pehle route chunein.',true);const gid=V('pgG'),gn=(byId('priceGroups',gid)||{name:'Normal'}).name;const l=DB.shops.filter(sh=>sh.route===r);
+      confirmBox(l.length+' dukanon ko group "'+gn+'" dein?',()=>{l.forEach(sh=>sh.groupId=gid);log('Customer groups','Route ko group diya',r,l.length+' dukanen',null,'Group: '+gn);save();toast(l.length+' dukanon ka group badal gaya.');draw()})};
+    $('#pgC').onchange=()=>{window._pgCur=V('pgC');draw()};
+    const rows=()=>{const q=V('pgQ').toLowerCase();return DB.products.filter(p=>isOn(p)&&(!q||(p.name+' '+(p.sku||'')+' '+(p.brand||'')).toLowerCase().includes(q)))};
+    const tbl=()=>{$('#pgT').innerHTML=table([{t:'Product'},{t:'Trade/pc',n:1},{t:'Retail/pc',n:1},{t:'Group formula',n:1},{t:'Khaas rate / pc'}],rows().map(p=>{const f=r2((g.base==='retail'?N(p.retailPc):N(p.tradePc))*(1+N(g.adj)/100));return[esc(p.name),fmt(p.tradePc),fmt(p.retailPc),fmt(f),`<input type="number" step="any" data-gpp="${p.id}" value="${p.gp&&N(p.gp[g.id])>0?esc(p.gp[g.id]):''}" style="width:110px">`]}))};
+    tbl();$('#pgQ').oninput=()=>{keep();tbl()};
+    const kept={};const keep=()=>{$$('[data-gpp]').forEach(i=>kept[i.dataset.gpp]=i.value)};
+    $('#pgT').addEventListener('input',e=>{if(e.target.dataset.gpp)kept[e.target.dataset.gpp]=e.target.value});
+    $('#pgSave').onclick=()=>{keep();let n=0;const ch=[];Object.keys(kept).forEach(pid=>{const pr=byId('products',pid);if(!pr)return;const nv=N(kept[pid]),ov=pr.gp&&N(pr.gp[g.id])||0;if(nv===ov)return;pr.gp=pr.gp||{};if(nv>0)pr.gp[g.id]=nv;else delete pr.gp[g.id];n++;ch.push(pr.name+': '+(ov||'formula')+' → '+(nv||'formula'))});
+      if(!n)return toast('Koi tabdeeli nahi.');log('Customer groups','Khaas rate badle',g.name,n+' products',ch.slice(0,40).join('; '));save();toast(n+' products ke rate save ho gaye.');draw()};
+  };
+  const edit=x=>{const n=!x;x=x||{name:'',base:'trade',adj:0};modal(n?'Naya group':'Group edit',`<div class="grid">${F('Group ka naam',inp('pgN',x.name))}${F('Rate kahan se',sel('pgB',BASE,x.base))}${F('% badlao (kam ke liye minus, jaise -5)',inp('pgA',x.adj,'number','step="any"'))}</div>`,
+    [{t:'Save',pri:1,fn:()=>{if(!V('pgN'))return toast('Naam likhein.',true);if(DB.priceGroups.some(y=>y!==x&&y.name.toLowerCase()===V('pgN').toLowerCase()))return toast('Is naam ka group pehle se hai.',true);
+      const sb=n?null:snapRec(x);Object.assign(x,{name:V('pgN'),base:V('pgB'),adj:N(V('pgA'))});if(n){x.id=uid();DB.priceGroups.push(x)}logEdit('Customer groups',n?'Group added':'Group edited',x.name,'',sb,x);save();closeModal();draw()}}])};
+  draw();
+};
+
+/* ---- cash register vs actual cash ---- */
+VIEWS.cashreg=el=>{
+  const accs=DB.accounts;
+  el.innerHTML=`<div class="card"><h3>Cash register: din ke end par kitna hona chahiye vs kitna hai</h3>
+   <p class="muted small">System account ki entries se bata deta hai ke din ke end par kitni cash honi chahiye. Aap gin kar asli cash likhein, farq (kami / zyada) khud nikal aayega aur record ho jayega.</p>
+   <div class="grid">${F('Tareekh',inp('crD',today(),'date'))}${F('Account',sel('crA',accs.map(a=>({v:a.id,t:a.name})),'acc_cash'))}</div><div id="crBox" class="mt"></div></div><div id="crHist"></div>`;
+  const calc=()=>{const d=V('crD'),a=V('crA');const day=accountMoves().filter(m=>m.acc===a&&m.date===d);const open=accountBalance(a,addDays(d,-1));const inn=sum(day,m=>m.in),out=sum(day,m=>m.out);return{d,a,day,open,inn,out,exp:r2(open+inn-out)}};
+  const group=l=>{const g={};l.forEach(m=>{const k=String(m.desc||'').split(':')[0];(g[k]=g[k]||{i:0,o:0}).i+=m.in;g[k].o+=m.out});return Object.keys(g).map(k=>[esc(k),g[k].i?fmt(g[k].i):'',g[k].o?fmt(g[k].o):''])};
+  const box=()=>{const c=calc();const old=DB.cashCounts.find(x=>x.date===c.d&&x.accountId===c.a);
+    $('#crBox').innerHTML=`<div class="kpis"><div class="kpi"><small>Pichli raat ki cash</small><b>${money(c.open)}</b></div><div class="kpi"><small>Aaj aayi</small><b>${money(c.inn)}</b></div><div class="kpi"><small>Aaj gayi</small><b>${money(c.out)}</b></div><div class="kpi"><small>Honi chahiye</small><b>${money(c.exp)}</b></div></div>
+     ${c.day.length?table([{t:'Kahan se / kis liye'},{t:'Aaya',n:1},{t:'Gaya',n:1}],group(c.day)):'<p class="muted mt">Is din is account mein koi entry nahi.</p>'}
+     <div class="grid mt">${F('Asli cash (gin kar)',inp('crAct',old?old.actual:'','number','step="any"'))}${F('Farq',`<input id="crDiff" readonly>`)}${F('Note / wajah',inp('crNote',old?old.note:''),'wide')}</div>
+     <div class="row mt"><button class="btn pri" id="crSave">${old?'Dobara save (pehli entry badlegi)':'Save'}</button></div>`;
+    const diff=()=>{const v=V('crAct');$('#crDiff').value=v===''?'':(N(v)-c.exp>0?'+':'')+fmt(N(v)-c.exp)+(N(v)-c.exp<0?'  (kami)':N(v)-c.exp>0?'  (zyada)':'  (barabar)')};
+    $('#crAct').oninput=diff;diff();
+    $('#crSave').onclick=()=>{if(V('crAct')==='')return toast('Asli cash likhein.',true);const act=N(V('crAct')),df=r2(act-c.exp);
+      const rec={id:old?old.id:uid(),date:c.d,accountId:c.a,accountName:(byId('accounts',c.a)||{}).name||'',opening:r2(c.open),cashIn:r2(c.inn),cashOut:r2(c.out),expected:c.exp,actual:act,diff:df,note:V('crNote'),by:ME.username,at:nowStamp()};
+      const sb=old?snapRec(old):null;if(old)Object.assign(old,rec);else DB.cashCounts.push(rec);
+      log('Cash register',old?'Count updated':'Count saved',fmtDate(c.d)+' '+rec.accountName,'Honi chahiye '+money(c.exp)+', asli '+money(act)+', farq '+money(df),sb?recTxt(sb):'',recTxt(snapRec(rec)));save();toast('Save ho gaya. Farq: '+money(df));box();hist.run()}};
+  const hist=reportBlock($('#crHist'),{title:'Cash register vs asli cash (history)',filters:dateRange('ch',addDays(today(),-30),today())+F('Account',sel('chA',accs.map(a=>({v:a.id,t:a.name})),'','Sab')),
+    build:()=>{const l=DB.cashCounts.filter(x=>inRange(x.date,V('chFrom'),V('chTo'))&&(!V('chA')||x.accountId===V('chA'))).sort((a,b)=>b.date.localeCompare(a.date));
+      return{cards:[['Din',l.length],['Kul kami',-sum(l.filter(x=>x.diff<0),x=>x.diff)],['Kul zyada',sum(l.filter(x=>x.diff>0),x=>x.diff)],['Net farq',sum(l,x=>x.diff)]],
+        cols:[{t:'Tareekh'},{t:'Account'},{t:'Pichli cash',n:1},{t:'Aayi',n:1},{t:'Gayi',n:1},{t:'Honi chahiye',n:1},{t:'Asli',n:1},{t:'Farq',n:1},{t:'Kis ne'},{t:'Note'}],
+        rows:l.map(x=>[fmtDate(x.date),x.accountName,x.opening,x.cashIn,x.cashOut,x.expected,x.actual,x.diff,x.by,x.note||'']),foot:['Total','','','','','',sum(l,x=>x.actual),sum(l,x=>x.diff),'','']}}});
+  $('#crD').onchange=box;$('#crA').onchange=box;box();
+};
+
+/* ---- booker commission ---- */
+const COMM=()=>Object.assign({basis:'recovery',pct:1},S().commission||{});
+const COMM_BASIS=[{v:'recovery',t:'Recovery par'},{v:'sale',t:'Sale par'},{v:'both',t:'Sale + Recovery dono par'}];
+function commOf(u){const c=COMM();const basis=u.commBasis||c.basis;const pct=(u.commPct===''||u.commPct===undefined||u.commPct===null)?N(c.pct):N(u.commPct);return{basis,pct}}
+function commLines(u,month){
+  const L=[];const inv=id=>byId('invoices',id);
+  activeInv().filter(i=>i.bookerId===u.id&&String(i.date).slice(0,7)===month).forEach(i=>L.push({date:i.date,kind:'sale',ref:i.no,shop:i.shopName||'',amt:N(i.net)}));
+  approvedRec().filter(r=>r.collectorId===u.id&&String(r.approvedDate||r.date).slice(0,7)===month).forEach(r=>L.push({date:r.approvedDate||r.date,kind:'rec',ref:'Recovery',shop:r.shopName||'',amt:N(r.amount)}));
+  DB.collections.forEach(c=>{const iv=inv(c.invoiceId);if(iv&&iv.bookerId===u.id&&String(c.date).slice(0,7)===month)L.push({date:c.date,kind:'rec',ref:c.invoiceNo||iv.no,shop:iv.shopName||'',amt:N(c.amount)})});
+  return L.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+}
+function commCalc(u,month){const c=commOf(u),L=commLines(u,month);const sale=sum(L.filter(x=>x.kind==='sale'),x=>x.amt),rec=sum(L.filter(x=>x.kind==='rec'),x=>x.amt);
+  const bs=(c.basis==='sale'||c.basis==='both')?sale:0,br=(c.basis==='recovery'||c.basis==='both')?rec:0;
+  return{...c,L,sale,rec,comm:r2((bs+br)*c.pct/100)}}
+VIEWS.commission=el=>{
+  const bks=DB.users.filter(u=>u.role==='booker');const C=COMM();
+  const bname=b=>b.name||b.username;
+  el.innerHTML=`${isAdmin()?`<div class="card"><h3>Commission ki settings</h3><p class="muted small">Pehle sab ke liye ek shared rate lagta hai. Kisi booker ka alag rate ya alag basis ho to neeche us ki row mein badal dein (rate khali = shared rate).</p>
+   <div class="grid">${F('Shared basis',sel('cmB',COMM_BASIS,C.basis))}${F('Shared rate %',inp('cmP',C.pct,'number','step="any"'))}</div>
+   ${bks.length?table([{t:'Booker'},{t:'Basis'},{t:'Rate %'}],bks.map(b=>[esc(bname(b)),sel('cb_'+b.id,COMM_BASIS,b.commBasis||'','Shared (default)'),inp('cp_'+b.id,b.commPct===undefined||b.commPct===null?'':b.commPct,'number','step="any" placeholder="shared" style="width:100px"')])):'<p class="muted mt">Abhi koi booker nahi.</p>'}
+   <div class="row mt"><button class="btn pri" id="cmSave">💾 Settings save</button></div><p class="small muted mt">Commission sirf hisab ke liye hai: ye khud salary ya account mein nahi jati. Salary dete waqt Salary screen mein add kar lein.</p></div>`:''}<div id="cmRep"></div>`;
+  if($('#cmSave'))$('#cmSave').onclick=()=>{const sb={basis:C.basis,pct:C.pct};S().commission={basis:V('cmB'),pct:N(V('cmP'))};
+    bks.forEach(b=>{const ob=(b.commBasis||'')+'/'+(b.commPct??''),nb=V('cb_'+b.id),np=V('cp_'+b.id);b.commBasis=nb;b.commPct=np===''?'':N(np);const nw=(b.commBasis||'')+'/'+(b.commPct??'');if(ob!==nw)log('Commission','Booker rate badla',bname(b),'',ob,nw)});
+    log('Commission','Shared rate badla','',  '',recTxt(sb),recTxt(S().commission));save();toast('Commission settings save ho gayin.');rp.run()};
+  const rp=reportBlock($('#cmRep'),{title:'Booker commission: mahana statement',filters:F('Mahina',inp('cmM',thisMonth(),'month'))+F('Booker',sel('cmU',bks.map(b=>({v:b.id,t:bname(b)})),ME.role==='booker'?ME.id:'','Sab')),
+    build:()=>{const m=V('cmM')||thisMonth();let list=bks;if(V('cmU'))list=bks.filter(b=>b.id===V('cmU'));if(ME.role==='booker')list=bks.filter(b=>b.id===ME.id);
+      const R=list.map(b=>({b,...commCalc(b,m)}));const bn=x=>COMM_BASIS.find(o=>o.v===x).t;
+      if(list.length===1){const r=R[0];return{sub:bname(r.b)+' • '+m,cards:[['Sale',money(r.sale)],['Recovery',money(r.rec)],['Basis',bn(r.basis)+' ('+fmt(r.pct)+'%)'],['Commission',money(r.comm)]],
+        cols:[{t:'Tareekh'},{t:'Kya'},{t:'Reference'},{t:'Dukan'},{t:'Raqam',n:1},{t:'Commission',n:1}],
+        rows:r.L.map(x=>{const on=r.basis==='both'||(r.basis==='sale'&&x.kind==='sale')||(r.basis==='recovery'&&x.kind==='rec');return[fmtDate(x.date),x.kind==='sale'?'Sale':'Recovery',x.ref,x.shop,x.amt,on?r2(x.amt*r.pct/100):0]}),foot:['Total','','','',r.sale+r.rec,r.comm]}}
+      return{sub:'Mahina '+m,cards:[['Kul commission',money(sum(R,r=>r.comm))]],cols:[{t:'Booker'},{t:'Basis'},{t:'Rate %',n:1},{t:'Sale',n:1},{t:'Recovery',n:1},{t:'Commission',n:1}],
+        rows:R.map(r=>[bname(r.b),bn(r.basis),r.pct,r.sale,r.rec,r.comm]),foot:['Total','','',sum(R,r=>r.sale),sum(R,r=>r.rec),sum(R,r=>r.comm)]}}});
+};
+
+/* ---- Activity log (admin): kisne kya badla / delete kiya, purani aur nayi value ---- */
+VIEWS.actlog=el=>{
+  reportBlock(el,{title:'Activity log: kisne, kab, kya badla / delete kiya',
+    filters:dateRange('al',addDays(today(),-7),today())+F('User',sel('alU',[...new Set(DB.activity.map(a=>a.user))].sort(),'','Sab'))+F('Module',sel('alM',[...new Set(DB.activity.map(a=>a.module))].sort(),'','Sab'))+F('Sirf',sel('alT',[{v:'edit',t:'Badlav (edit)'},{v:'delete',t:'Delete'},{v:'add',t:'Naya add'}],'','Sab'))+F('Search',inp('alQ','')),
+    build:()=>{const q=V('alQ').toLowerCase(),t=V('alT');
+      const kindOf=a=>/delet|removed|cancel|reject/i.test(a.action)?'delete':/edit|updat|changed|badla|moved|count|reopen/i.test(a.action)?'edit':/add|creat|saved|import|new/i.test(a.action)?'add':'other';
+      const l=DB.activity.filter(a=>inRange(a.at.slice(0,10),V('alFrom'),V('alTo'))&&(!V('alU')||a.user===V('alU'))&&(!V('alM')||a.module===V('alM'))&&(!t||kindOf(a)===t)&&(!q||[a.module,a.action,a.record,a.details,a.user,a.before,a.after].join(' ').toLowerCase().includes(q)));
+      const sh=l.slice(0,1000);
+      return{sub:l.length+' entries'+(l.length>sh.length?' (pehli 1000)':''),cards:[['Entries',l.length],['Delete',l.filter(a=>kindOf(a)==='delete').length],['Edit',l.filter(a=>kindOf(a)==='edit').length]],
+        cols:[{t:'Waqt'},{t:'User'},{t:'Module'},{t:'Kya hua'},{t:'Record'},{t:'Detail'},{t:'Purani value'},{t:'Nayi value'}],rows:sh.map(a=>[a.at,a.user,a.module,a.action,a.record,a.details,a.before||'',a.after||''])}}})};
 
 /* =====================================================================
    BACKUP & DAY END
@@ -4027,7 +4152,7 @@ const DEV_TABS={
   const isTrace=a=>a.module==='Developer'&&a.action===TRACE;
   const show=()=>{const q=V('lgQ').trim().toLowerCase();const l=DB.activity.filter(a=>inRange(a.at.slice(0,10),V('lgFrom'),V('lgTo'))&&(!V('lgU')||a.user===V('lgU'))&&(!V('lgM')||a.module===V('lgM'))&&(!q||[a.module,a.action,a.record,a.details,a.user].join(' ').toLowerCase().includes(q)));
     const sh=l.slice(0,500);$('#lgCnt').textContent=l.length+' entries match'+(l.length>sh.length?' (showing the first 500)':'');
-    $('#lgOut').innerHTML=table([{t:''},{t:'Time'},{t:'User'},{t:'Module'},{t:'Action'},{t:'Record'},{t:'Detail'}],sh.map(a=>[isTrace(a)?'🔒':`<input type="checkbox" data-lg="${a.id}">`,esc(a.at),esc(a.user),esc(a.module),esc(a.action),esc(a.record),esc(a.details)]))};
+    $('#lgOut').innerHTML=table([{t:''},{t:'Time'},{t:'User'},{t:'Module'},{t:'Action'},{t:'Record'},{t:'Detail'},{t:'Old value'},{t:'New value'}],sh.map(a=>[isTrace(a)?'🔒':`<input type="checkbox" data-lg="${a.id}">`,esc(a.at),esc(a.user),esc(a.module),esc(a.action),esc(a.record),esc(a.details),esc(a.before||''),esc(a.after||'')]))};
   $('#lgShow').onclick=show;
   $('#lgAll').onclick=()=>{const bx=$$('[data-lg]');const on=bx.some(b=>!b.checked);bx.forEach(b=>b.checked=on)};
   $('#lgDel').onclick=()=>{const ids=new Set($$('[data-lg]:checked').map(b=>b.dataset.lg));if(!ids.size)return toast('Tick the entries first.',true);if(!V('lgWhy').trim())return toast('Enter the reason.',true);
