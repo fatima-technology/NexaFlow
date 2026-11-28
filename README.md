@@ -61,6 +61,12 @@ Rules band date par orders ka create/update rokte hain aur `dayEnds` ko create-o
 - **Backup:** Day End / Backup file mein saari companies ek saath jati hain; restore par saari wapas aati hain. Booker orders (cloud) company ke tag ke saath jate hain; Booker Day End lock booker + date par hota hai (company-wise nahi).
 - Android APK (Field) abhi sirf pehli (main) company ke saath chalti hai.
 
+## Round 1: Activity log, Cash register, Commission, Customer groups
+- **Activity log (kisne kya badla)** — System menu, sirf admin. Date / user / module / Edit-Delete-Naya filter. Edit aur delete par *purani* aur *nayi* value likhi jati hai (invoice, purchase, product, shop, user, expense, return, recovery).
+- **Cash register vs actual** — Accounts menu. Din ke end par system batata hai cash kitni honi chahiye (pichli cash + aayi - gayi), aap asli cash likhte hain, farq (kami/zyada) save aur history/print/Excel.
+- **Booker commission** — Staff menu. Shared basis (Recovery / Sale / Dono) + shared %, har booker ka alag basis/% bhi. Mahana statement (sab bookers ya ek booker ki detail), print/Excel. Default: recovery par 1%.
+- **Customer groups & rates** — Customers menu. Groups (Wholesale/Retail/Special), rate Trade ya Retail se +/-%, product ka khaas rate, shop ya poori route ko group. POS mein shop ka group rate khud aata hai. (Android Field app abhi purane rate use karti hai.)
+
 ## Naye device par login (developer ke baghair)
 - Naye laptop par .exe kholne par (ya pehla login try karne par) window aati hai: **Client code + username + password**. App cloud ke aakhri Day End backup se password ka *hash* check karti hai (plain password kahin save nahi hota). Theek ho to data aur users khud wapas aate hain aur login ho jata hai. Developer / admin password nahi poochha jata.
 - Admin apna Client code **Backup & day end** screen par dekh sakta hai. Client ko bas code + username + password dena hai.
